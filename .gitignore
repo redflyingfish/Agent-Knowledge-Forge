@@ -1,0 +1,30 @@
+# Python / tooling
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local machine files
+.DS_Store
+
+# Secrets and local runtime configuration
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# Local project journal; useful during development but too noisy for OSS release.
+ITERATION_LOG.md
+
+# Generated harvesting outputs.
+# Keep the repo lightweight; these files can contain large crawled pages,
+# paid LLM outputs, local experiments, and source snapshots.
+data/*
