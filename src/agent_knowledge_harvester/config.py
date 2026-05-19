@@ -36,6 +36,19 @@ class Settings(BaseSettings):
     embedding_provider: str = Field(default="local-bge-m3")
     embedding_model: str = Field(default="BAAI/bge-m3")
 
+    # Optional web search provider settings for automatic discovery.
+    search_provider: str | None = None
+    search_api_key: str | None = None
+    search_base_url: HttpUrl | None = None
+    search_results_per_query: int = 5
+    search_max_queries: int = 80
+    search_concurrency: int = 3
+    search_timeout_seconds: float = 30.0
+    tavily_api_key: str | None = None
+    brave_search_api_key: str | None = None
+    serpapi_api_key: str | None = None
+    exa_api_key: str | None = None
+
     request_timeout_seconds: float = 120.0
     ingestion_timeout_seconds: float = 45.0
     max_markdown_chars: int = 120_000

@@ -62,6 +62,25 @@ TOPIC_KEYWORDS: dict[KnowledgeTopic, tuple[str, ...]] = {
         "summarization",
         "prompt caching",
     ),
+    KnowledgeTopic.COST_LATENCY: (
+        "cost",
+        "latency",
+        "token budget",
+        "rate limit",
+        "throughput",
+        "batching",
+        "caching",
+    ),
+    KnowledgeTopic.DATA_CONNECTORS: (
+        "connector",
+        "data source",
+        "database",
+        "calendar",
+        "notion",
+        "slack",
+        "crm",
+        "filesystem",
+    ),
     KnowledgeTopic.DEPLOYMENT: (
         "deployment",
         "production",
@@ -71,12 +90,67 @@ TOPIC_KEYWORDS: dict[KnowledgeTopic, tuple[str, ...]] = {
         "rate limit",
         "rollout",
     ),
+    KnowledgeTopic.GUARDRAILS: (
+        "guardrail",
+        "policy",
+        "moderation",
+        "constraint",
+        "validation",
+        "approval",
+        "allowlist",
+        "denylist",
+    ),
+    KnowledgeTopic.HUMAN_IN_LOOP: (
+        "human in the loop",
+        "hitl",
+        "human review",
+        "approval",
+        "interrupt",
+        "escalation",
+        "handover",
+    ),
+    KnowledgeTopic.IDENTITY_ACCESS: (
+        "identity",
+        "auth",
+        "oauth",
+        "permission",
+        "access control",
+        "credential",
+        "secret",
+        "tenant",
+    ),
+    KnowledgeTopic.KNOWLEDGE_GRAPHS: (
+        "knowledge graph",
+        "graph retrieval",
+        "entity",
+        "relationship",
+        "ontology",
+        "graph database",
+    ),
     KnowledgeTopic.MCP: (
         "mcp",
         "model context protocol",
         "server",
         "client",
         "connector",
+    ),
+    KnowledgeTopic.MODEL_ROUTING: (
+        "model routing",
+        "router",
+        "fallback model",
+        "model selection",
+        "small model",
+        "large model",
+        "mixture",
+    ),
+    KnowledgeTopic.MULTIMODAL_AGENTS: (
+        "multimodal",
+        "vision",
+        "image",
+        "screenshot",
+        "audio",
+        "video",
+        "visual",
     ),
     KnowledgeTopic.MULTI_AGENT: (
         "multi-agent",
@@ -102,6 +176,14 @@ TOPIC_KEYWORDS: dict[KnowledgeTopic, tuple[str, ...]] = {
         "reflection",
         "reasoning",
     ),
+    KnowledgeTopic.PROMPT_ENGINEERING: (
+        "prompt",
+        "system prompt",
+        "instruction",
+        "few-shot",
+        "prompt template",
+        "prompt injection",
+    ),
     KnowledgeTopic.PROTOCOLS: (
         "protocol",
         "specification",
@@ -110,6 +192,23 @@ TOPIC_KEYWORDS: dict[KnowledgeTopic, tuple[str, ...]] = {
         "contract",
         "standard",
     ),
+    KnowledgeTopic.REASONING: (
+        "reasoning",
+        "chain of thought",
+        "reflection",
+        "self-critique",
+        "deliberation",
+        "tree of thought",
+    ),
+    KnowledgeTopic.STATE_RUNTIME: (
+        "state",
+        "runtime",
+        "checkpoint",
+        "session",
+        "resume",
+        "durable execution",
+        "persistence",
+    ),
     KnowledgeTopic.TOOL_USE: (
         "tool",
         "tools",
@@ -117,6 +216,14 @@ TOPIC_KEYWORDS: dict[KnowledgeTopic, tuple[str, ...]] = {
         "tool calling",
         "workflow",
         "action",
+    ),
+    KnowledgeTopic.TOOL_ROUTING: (
+        "tool routing",
+        "tool selection",
+        "tool choice",
+        "router",
+        "tool registry",
+        "capability discovery",
     ),
     KnowledgeTopic.MEMORY: (
         "memory",
@@ -325,7 +432,7 @@ def analyze_directory(
     in_dir: Path,
     out_dir: Path,
     analyzer: KnowledgeCardAnalyzer | None = None,
-    max_index_entries: int = 30,
+    max_index_entries: int | None = None,
 ) -> tuple[list[AnalysisResult], AnalysisRunStats, KnowledgeIndex]:
     analyzer = analyzer or KnowledgeCardAnalyzer()
     results: list[AnalysisResult] = []
@@ -349,6 +456,10 @@ def analyze_directory(
     index = build_knowledge_index(results, max_entries=max_index_entries)
     write_json(out_dir / "knowledge_index.json", index.model_dump(mode="json"))
     (out_dir / "knowledge_index.md").write_text(render_index_markdown(index), encoding="utf-8")
+    (out_dir / "knowledge_index.rich.md").write_text(
+        render_rich_index_markdown(index),
+        encoding="utf-8",
+    )
     brief = build_frontier_brief(index)
     write_json(out_dir / "frontier_brief.json", brief.model_dump(mode="json"))
     (out_dir / "frontier_brief.md").write_text(render_frontier_brief(brief), encoding="utf-8")
@@ -374,7 +485,7 @@ def write_frontier_brief_from_index(index_path: Path, out_dir: Path | None = Non
 
 def build_knowledge_index(
     results: list[AnalysisResult],
-    max_entries: int = 30,
+    max_entries: int | None = None,
 ) -> KnowledgeIndex:
     entries: list[KnowledgeIndexEntry] = []
     topic_counts: dict[KnowledgeTopic, int] = {}
@@ -389,8 +500,10 @@ def build_knowledge_index(
                     source_title=result.title,
                     card_title=card.title,
                     one_sentence=card.one_sentence,
+                    why_it_matters=card.why_it_matters,
                     agent_builder_takeaway=card.agent_builder_takeaway,
                     topics=card.topics,
+                    implementation_notes=card.implementation_notes[:4],
                     relevance_score=card.relevance_score,
                     frontier_score=card.frontier_score,
                     priority_score=score_priority(card),
@@ -405,7 +518,7 @@ def build_knowledge_index(
         topic_counts=dict(
             sorted(topic_counts.items(), key=lambda item: item[1], reverse=True)
         ),
-        entries=entries[:max_entries],
+        entries=entries if max_entries is None else entries[:max_entries],
     )
 
 
@@ -671,12 +784,36 @@ def select_why_it_matters(sentences: list[str], one_sentence: str) -> str:
     return clamp_text(one_sentence, 260)
 
 
-def select_implementation_notes(sentences: list[str], limit: int = 3) -> list[str]:
+def select_implementation_notes(sentences: list[str], limit: int = 4) -> list[str]:
     notes: list[str] = []
+    implementation_signals = (
+        "connect",
+        "build",
+        "integrat",
+        "access",
+        "tool",
+        "route",
+        "cache",
+        "store",
+        "trace",
+        "monitor",
+        "evaluate",
+        "test",
+        "checkpoint",
+        "schema",
+        "permission",
+        "auth",
+        "guardrail",
+        "sandbox",
+        "memory",
+        "retrieval",
+        "orchestrat",
+        "workflow",
+    )
     for sentence in sentences:
         lowered = sentence.lower()
-        if any(signal in lowered for signal in ("connect", "build", "integrat", "access", "tool")):
-            notes.append(clamp_text(sentence, 220))
+        if any(signal in lowered for signal in implementation_signals):
+            notes.append(clamp_text(sentence, 280))
         if len(notes) >= limit:
             break
     return notes
@@ -768,13 +905,113 @@ def render_index_markdown(index: KnowledgeIndex) -> str:
                 "",
                 f"One sentence: {entry.one_sentence}",
                 "",
+                f"Why it matters: {entry.why_it_matters or entry.one_sentence}",
+                "",
                 f"Agent builder takeaway: {entry.agent_builder_takeaway}",
                 "",
             ]
         )
+        if entry.implementation_notes:
+            lines.append("Implementation details:")
+            lines.extend(f"- {note}" for note in entry.implementation_notes)
+            lines.append("")
         if entry.evidence:
             lines.append("Evidence:")
             lines.extend(f"- {quote}" for quote in entry.evidence)
+            lines.append("")
+
+    return "\n".join(lines).strip() + "\n"
+
+
+def render_rich_index_markdown(index: KnowledgeIndex, max_topic_cards: int = 8) -> str:
+    lines = [
+        "# Knowledge Index Rich View",
+        "",
+        f"Total documents: {index.total_documents}",
+        f"Total cards: {index.total_cards}",
+        f"Unique sources: {len({str(entry.source_url) for entry in index.entries})}",
+        "",
+    ]
+
+    if index.topic_counts:
+        lines.append("## Topic Coverage")
+        lines.append("")
+        for topic, count in index.topic_counts.items():
+            lines.append(f"- {topic.value}: {count}")
+        lines.append("")
+
+    source_counts: dict[str, int] = {}
+    source_titles: dict[str, str] = {}
+    for entry in index.entries:
+        source = str(entry.source_url)
+        source_counts[source] = source_counts.get(source, 0) + 1
+        if entry.source_title:
+            source_titles[source] = entry.source_title
+
+    if source_counts:
+        lines.append("## Sources")
+        lines.append("")
+        for source, count in sorted(
+            source_counts.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        ):
+            lines.append(f"- {source_titles.get(source, source)} ({count} cards)")
+            lines.append(f"  - {source}")
+        lines.append("")
+
+    lines.append("## Priority Cards")
+    lines.append("")
+    for position, entry in enumerate(index.entries, start=1):
+        lines.extend(
+            [
+                f"### {position}. {entry.card_title}",
+                "",
+                f"- Source: {entry.source_title or entry.source_url}",
+                f"- URL: {entry.source_url}",
+                (
+                    "- Scores: "
+                    f"priority={entry.priority_score:.3f}, "
+                    f"relevance={entry.relevance_score:.3f}, "
+                    f"frontier={entry.frontier_score:.3f}"
+                ),
+                f"- Topics: {', '.join(topic.value for topic in entry.topics) or '(none)'}",
+                "",
+                f"One sentence: {entry.one_sentence}",
+                "",
+                f"Why it matters: {entry.why_it_matters or entry.one_sentence}",
+                "",
+                f"Agent builder takeaway: {entry.agent_builder_takeaway}",
+                "",
+            ]
+        )
+        if entry.implementation_notes:
+            lines.append("Implementation details:")
+            lines.extend(f"- {note}" for note in entry.implementation_notes)
+            lines.append("")
+        if entry.evidence:
+            lines.append("Evidence:")
+            lines.extend(f"- {quote}" for quote in entry.evidence)
+            lines.append("")
+
+    if index.topic_counts:
+        lines.append("## Topic Spotlight")
+        lines.append("")
+        for topic, _count in list(index.topic_counts.items())[:10]:
+            topic_entries = [
+                entry for entry in index.entries if topic in entry.topics
+            ][:max_topic_cards]
+            if not topic_entries:
+                continue
+            lines.extend([f"### {topic.value}", ""])
+            for entry in topic_entries:
+                lines.extend(
+                    [
+                        f"- {entry.card_title}",
+                        f"  - {entry.agent_builder_takeaway}",
+                        f"  - {entry.source_title or entry.source_url}",
+                    ]
+                )
             lines.append("")
 
     return "\n".join(lines).strip() + "\n"

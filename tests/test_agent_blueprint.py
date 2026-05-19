@@ -23,9 +23,13 @@ def test_role_prompts_encode_recency_and_human_report_rules() -> None:
     blueprint = build_frontier_harvesting_blueprint()
     prompts = {role.role_id: role.system_prompt for role in blueprint.roles}
 
-    assert "2026-first" in prompts["discovery_filter"]
-    assert "2025-06-01" in prompts["discovery_filter"]
+    assert "2025+ broad frontier" in prompts["discovery_filter"]
+    assert "English and Chinese sources" in prompts["discovery_filter"]
+    assert "GitHub topics are weak evidence" in prompts["discovery_filter"]
+    assert "output schema" in prompts["deep_reader"]
     assert "Do not simply translate" in prompts["human_learning_writer"]
+    assert "Chinese sources are" in prompts["human_learning_writer"]
+    assert "first-class inputs" in prompts["human_learning_writer"]
     assert "human-labeled evaluation set" in prompts["quality_evaluator"]
 
 

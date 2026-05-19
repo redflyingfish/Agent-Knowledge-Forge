@@ -3,6 +3,7 @@ from agent_knowledge_harvester.cli import (
     load_urls_from_file,
     normalize_trending_languages,
     runtime_limit_overrides,
+    validate_report_language,
 )
 
 
@@ -47,3 +48,8 @@ def test_runtime_limit_overrides_keeps_only_explicit_values() -> None:
         "ingestion_timeout_seconds": 30.0,
         "max_markdown_chars": 40_000,
     }
+
+
+def test_validate_report_language_accepts_bilingual_output() -> None:
+    assert validate_report_language(" both ") == "both"
+    assert validate_report_language("ZH") == "zh"

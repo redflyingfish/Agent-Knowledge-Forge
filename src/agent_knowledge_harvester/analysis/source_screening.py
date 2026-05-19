@@ -2,7 +2,7 @@ import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -19,6 +19,8 @@ from agent_knowledge_harvester.schemas.screening import (
     SourceCandidate,
 )
 from agent_knowledge_harvester.utils.files import write_json
+
+MAX_PREVIEW_CHARS = 2200
 
 CORE_AGENT_TERMS = {
     "agent",
@@ -88,12 +90,25 @@ NOVELTY_COMMON_TERMS = {
 AUTHORITY_DOMAIN_SCORES = {
     "modelcontextprotocol.io": 0.86,
     "docs.anthropic.com": 0.84,
+    "resources.anthropic.com": 0.82,
     "anthropic.com": 0.78,
     "platform.openai.com": 0.84,
     "openai.com": 0.78,
+    "learn.microsoft.com": 0.78,
+    "blogs.microsoft.com": 0.72,
     "langchain-ai.github.io": 0.78,
     "langchain.com": 0.76,
+    "redis.io": 0.62,
     "github.blog": 0.68,
+}
+
+SOCIAL_REVIEW_DOMAINS = {
+    "linkedin.com",
+    "x.com",
+    "twitter.com",
+    "reddit.com",
+    "zhihu.com",
+    "xiaohongshu.com",
 }
 
 
@@ -127,6 +142,7 @@ class GitHubRepoMetadataClient:
                 if response.status_code >= 400:
                     return fallback
                 payload = response.json()
+                preview_text = await fetch_github_readme_preview(client, owner, repo, headers)
         except httpx.HTTPError:
             return fallback
 
@@ -134,6 +150,7 @@ class GitHubRepoMetadataClient:
             url=target.url,
             title=payload.get("full_name") or fallback.title,
             summary=payload.get("description") or "",
+            preview_text=preview_text,
             source_kind=target.source_kind.value,
             discovered_from=target.discovered_from,
             author=owner,
@@ -171,6 +188,8 @@ class GenericUrlMetadataClient:
                     return fallback
         except httpx.HTTPError:
             return fallback
+        if is_non_html_response(response):
+            return fallback
 
         soup = BeautifulSoup(response.text, "html.parser")
         title = first_text(
@@ -194,11 +213,13 @@ class GenericUrlMetadataClient:
         )
         author = first_text(meta_content(soup, "author"), fallback.author)
         topics = unique_texts(topics_from_url(str(target.url)) + target.tags)
+        preview_text = html_preview_text(soup)
 
         return SourceCandidate(
             url=target.url,
             title=title,
             summary=summary,
+            preview_text=preview_text,
             source_kind=target.source_kind.value,
             discovered_from=target.discovered_from,
             author=author,
@@ -247,21 +268,28 @@ async def refine_screening_with_llm(
     """Use an LLM as a semantic gatekeeper after deterministic scoring."""
     existing_texts = build_existing_memory_texts(existing_index)
     selected = select_llm_review_sources(report.sources, max_candidates=max_candidates)
+    judged = 0
     for source in selected:
-        result = await llm_client.chat_json(
-            stage,
-            system_prompt=build_llm_screening_system_prompt(),
-            user_prompt=build_llm_screening_user_prompt(source, existing_texts),
-            temperature=0.0,
-        )
-        judgment = parse_llm_screening_judgment(result.payload)
-        judgment.model = result.model
-        judgment.prompt_tokens_estimate = result.prompt_tokens_estimate
-        judgment.completion_tokens_estimate = result.completion_tokens_estimate
-        apply_llm_judgment(source, judgment)
+        try:
+            result = await llm_client.chat_json(
+                stage,
+                system_prompt=build_llm_screening_system_prompt(),
+                user_prompt=build_llm_screening_user_prompt(source, existing_texts),
+                temperature=0.0,
+            )
+            judgment = parse_llm_screening_judgment(result.payload)
+            judgment.model = result.model
+            judgment.prompt_tokens_estimate = result.prompt_tokens_estimate
+            judgment.completion_tokens_estimate = result.completion_tokens_estimate
+            apply_llm_judgment(source, judgment)
+            judged += 1
+        except Exception as exc:  # noqa: BLE001 - screening should degrade gracefully.
+            source.reasons.append(
+                f"llm_screening_error={type(exc).__name__}:{str(exc)[:160]}"
+            )
 
     report.llm_enabled = True
-    report.llm_judged = len(selected)
+    report.llm_judged = judged
     recalculate_report_counts(report)
     report.sources.sort(key=lambda item: item.overall_score, reverse=True)
     return report
@@ -313,6 +341,7 @@ def build_llm_screening_user_prompt(
             "url": str(candidate.url),
             "title": candidate.title,
             "summary": candidate.summary,
+            "preview_text": candidate.preview_text[:1200],
             "source_kind": candidate.source_kind,
             "author": candidate.author,
             "repo_stars": candidate.repo_stars,
@@ -473,6 +502,9 @@ def score_candidate(
     reasons = build_reasons(candidate, relevance, authority, freshness, novelty, duplicate_of)
     if authority_override:
         reasons.append("authority_override_candidate")
+    if should_force_social_review(candidate, authority, decision):
+        decision = ScreeningDecision.REVIEW
+        reasons.append("social_source_requires_review")
     return ScreenedSource(
         candidate=candidate,
         decision=decision,
@@ -504,7 +536,7 @@ def decide_source(
 
 def score_agent_relevance(candidate: SourceCandidate) -> float:
     primary_text = normalize_text(
-        " ".join([candidate.title, candidate.summary, str(candidate.url)])
+        " ".join([candidate.title, candidate.summary, candidate.preview_text, str(candidate.url)])
     )
     topic_text = normalize_text(" ".join(candidate.topics))
     core_hits = sum(1 for term in CORE_AGENT_TERMS if term in primary_text)
@@ -556,6 +588,17 @@ def infer_discovery_source_type(candidate: SourceCandidate) -> str:
 
 def is_very_hot_candidate(candidate: SourceCandidate) -> bool:
     return (candidate.repo_stars or 0) >= 10_000 or (candidate.repo_forks or 0) >= 2_000
+
+
+def should_force_social_review(
+    candidate: SourceCandidate,
+    authority: float,
+    decision: ScreeningDecision,
+) -> bool:
+    """Keep social posts reviewable instead of auto-ingesting them."""
+    if decision != ScreeningDecision.ACCEPT or authority >= 0.15:
+        return False
+    return domain_from_url(str(candidate.url)) in SOCIAL_REVIEW_DOMAINS
 
 
 def score_freshness(pushed_at: datetime | None) -> float:
@@ -717,6 +760,7 @@ def render_screening_report(report: ScreeningReport) -> str:
                     f"novelty={source.novelty_score:.3f}"
                 ),
                 f"Summary: {candidate.summary or '(none)'}",
+                f"Preview: {trim_preview(candidate.preview_text, 280) or '(none)'}",
                 "Reasons: " + ", ".join(source.reasons),
             ]
         )
@@ -754,8 +798,76 @@ def render_llm_judgment_lines(source: ScreenedSource) -> list[str]:
 
 def candidate_text(candidate: SourceCandidate) -> str:
     return normalize_text(
-        " ".join([candidate.title, candidate.summary, " ".join(candidate.topics)])
+        " ".join(
+            [candidate.title, candidate.summary, candidate.preview_text, " ".join(candidate.topics)]
+        )
     )
+
+
+async def fetch_github_readme_preview(
+    client: httpx.AsyncClient,
+    owner: str,
+    repo: str,
+    headers: dict[str, str],
+) -> str:
+    """Fetch a bounded README preview for screening-time relevance checks."""
+    readme_headers = dict(headers)
+    readme_headers["Accept"] = "application/vnd.github.raw"
+    try:
+        response = await client.get(
+            f"https://api.github.com/repos/{owner}/{repo}/readme",
+            headers=readme_headers,
+        )
+    except httpx.HTTPError:
+        return ""
+    if response.status_code >= 400:
+        return ""
+    return markdown_preview_text(response.text)
+
+
+def markdown_preview_text(markdown: str, limit: int = MAX_PREVIEW_CHARS) -> str:
+    """Extract the semantic front matter of a Markdown document."""
+    cleaned_lines: list[str] = []
+    in_code_block = False
+    for raw_line in markdown.splitlines():
+        line = raw_line.strip()
+        if line.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block or not line:
+            continue
+        if line.startswith(("!", "[!")):
+            continue
+        line = re.sub(r"<[^>]+>", " ", line)
+        line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
+        line = re.sub(r"[#>*_`|]", " ", line)
+        cleaned_lines.append(line)
+        if len(" ".join(cleaned_lines)) >= limit:
+            break
+    return trim_preview(" ".join(cleaned_lines), limit)
+
+
+def html_preview_text(soup: BeautifulSoup, limit: int = MAX_PREVIEW_CHARS) -> str:
+    """Extract title-adjacent headings and first paragraphs from an HTML page."""
+    for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+        tag.decompose()
+    parts: list[str] = []
+    for tag in soup.find_all(["h1", "h2", "p", "li"], limit=80):
+        text = " ".join(tag.get_text(" ", strip=True).split())
+        if len(text) < 24:
+            continue
+        parts.append(text)
+        if len(" ".join(parts)) >= limit:
+            break
+    return trim_preview(" ".join(parts), limit)
+
+
+def trim_preview(text: str, limit: int = MAX_PREVIEW_CHARS) -> str:
+    """Normalize and bound preview text used in reports and prompts."""
+    normalized = re.sub(r"\s+", " ", text).strip()
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 3].rstrip() + "..."
 
 
 def normalize_text(text: str) -> str:
@@ -857,10 +969,22 @@ def safe_parse_datetime(value: str | None) -> datetime | None:
 
 def title_from_url(url: str) -> str:
     parsed = urlparse(url)
-    parts = [part for part in parsed.path.split("/") if part]
+    parts = [unquote(part) for part in parsed.path.split("/") if part]
     if not parts:
         return parsed.netloc or url
-    return " ".join(part.replace("-", " ").replace("_", " ") for part in parts[-2:])
+    title = " ".join(part.replace("-", " ").replace("_", " ") for part in parts[-2:])
+    return re.sub(r"\s+", " ", title.replace(".pdf", " pdf")).strip()
+
+
+def is_non_html_response(response: httpx.Response) -> bool:
+    """Avoid parsing PDFs and binary downloads as malformed HTML."""
+    content_type = response.headers.get("content-type", "").lower()
+    if "text/html" in content_type or "application/xhtml" in content_type:
+        return False
+    final_url = str(response.url).lower()
+    if final_url.endswith(".pdf") or "application/pdf" in content_type:
+        return True
+    return bool(content_type) and not content_type.startswith("text/")
 
 
 def topics_from_url(url: str) -> list[str]:

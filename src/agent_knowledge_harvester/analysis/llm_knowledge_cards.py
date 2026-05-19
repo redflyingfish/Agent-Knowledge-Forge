@@ -16,6 +16,7 @@ from agent_knowledge_harvester.analysis.knowledge_cards import (
     render_frontier_brief,
     render_index_markdown,
     render_markdown,
+    render_rich_index_markdown,
 )
 from agent_knowledge_harvester.schemas.analysis import (
     AnalysisResult,
@@ -88,7 +89,7 @@ async def analyze_directory_with_llm(
     in_dir: Path,
     out_dir: Path,
     analyzer: LLMKnowledgeCardAnalyzer,
-    max_index_entries: int = 30,
+    max_index_entries: int | None = None,
     concurrency: int = 1,
 ) -> tuple[list[AnalysisResult], AnalysisRunStats, KnowledgeIndex]:
     """Analyze ingestion outputs with the LLM deep-reader and write standard artifacts."""
@@ -117,6 +118,10 @@ async def analyze_directory_with_llm(
     index = build_knowledge_index(results, max_entries=max_index_entries)
     write_json(out_dir / "knowledge_index.json", index.model_dump(mode="json"))
     (out_dir / "knowledge_index.md").write_text(render_index_markdown(index), encoding="utf-8")
+    (out_dir / "knowledge_index.rich.md").write_text(
+        render_rich_index_markdown(index),
+        encoding="utf-8",
+    )
     brief = build_frontier_brief(index)
     write_json(out_dir / "frontier_brief.json", brief.model_dump(mode="json"))
     (out_dir / "frontier_brief.md").write_text(render_frontier_brief(brief), encoding="utf-8")

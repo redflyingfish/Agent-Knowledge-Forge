@@ -62,6 +62,7 @@ def test_evaluate_outputs_combines_screening_and_knowledge_metrics(tmp_path) -> 
                 relevance_score=0.8,
                 frontier_score=0.5,
                 priority_score=0.7,
+                evidence=["MCP connects agents to tools."],
             )
         ],
     )
@@ -81,6 +82,11 @@ def test_evaluate_outputs_combines_screening_and_knowledge_metrics(tmp_path) -> 
     assert metrics.avg_llm_agent_relevance == 0.8
     assert metrics.avg_card_priority == 0.7
     assert metrics.topic_coverage == 1
+    assert metrics.evidence_coverage_rate == 1.0
+    assert metrics.avg_evidence_per_card == 1.0
+    assert metrics.unique_sources == 1
+    assert metrics.source_diversity_ratio == 1.0
+    assert metrics.max_source_concentration == 1.0
     assert metrics.durable_markdown_chars == len("# Index\n")
 
 

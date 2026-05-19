@@ -1,14 +1,17 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from bs4 import BeautifulSoup
 
 from agent_knowledge_harvester.analysis.source_screening import (
     GitHubRepoMetadataClient,
     authority_score_for_domain,
     build_existing_memory_texts,
     distinctive_technical_terms,
+    html_preview_text,
     infer_discovery_source_type,
     jaccard_similarity,
+    markdown_preview_text,
     parse_github_repo,
     parse_llm_screening_judgment,
     refine_screening_with_llm,
@@ -16,6 +19,7 @@ from agent_knowledge_harvester.analysis.source_screening import (
     score_candidate,
     score_freshness,
     screen_candidates,
+    title_from_url,
 )
 from agent_knowledge_harvester.config import Settings
 from agent_knowledge_harvester.schemas.analysis import (
@@ -45,6 +49,11 @@ class FakeLLMClient:
         payload = self.payloads[self.calls]
         self.calls += 1
         return FakeLLMResult(payload)
+
+
+class FailingLLMClient:
+    async def chat_json(self, *args: object, **kwargs: object) -> FakeLLMResult:
+        raise ConnectionError("temporary network failure")
 
 
 def test_parse_github_repo_extracts_owner_and_repo() -> None:
@@ -80,6 +89,32 @@ def test_authority_domain_boost_supports_official_docs() -> None:
     assert infer_discovery_source_type(candidate) == "official_docs"
 
 
+def test_authority_domain_boost_supports_vendor_resource_pdfs() -> None:
+    candidate = SourceCandidate(
+        url="https://resources.anthropic.com/hubfs/2026%20Agentic%20Coding%20Trends%20Report.pdf",
+        title=title_from_url(
+            "https://resources.anthropic.com/hubfs/2026%20Agentic%20Coding%20Trends%20Report.pdf"
+        ),
+    )
+
+    assert "Agentic Coding Trends Report" in candidate.title
+    assert authority_score_for_domain(candidate) >= 0.8
+
+
+def test_authority_override_keeps_relevant_vendor_pdf_reports() -> None:
+    screened = score_candidate(
+        SourceCandidate(
+            url="https://resources.anthropic.com/hubfs/2026%20Agentic%20Coding%20Trends%20Report.pdf",
+            title=title_from_url(
+                "https://resources.anthropic.com/hubfs/2026%20Agentic%20Coding%20Trends%20Report.pdf"
+            ),
+        )
+    )
+
+    assert screened.decision == ScreeningDecision.ACCEPT
+    assert "authority_override_candidate" in screened.reasons
+
+
 def test_authority_override_keeps_core_official_specs() -> None:
     screened = score_candidate(
         SourceCandidate(
@@ -112,6 +147,42 @@ def test_score_candidate_rejects_low_relevance_sources() -> None:
     assert screened.relevance_score < 0.16
 
 
+def test_social_posts_require_review_even_when_relevant() -> None:
+    screened = score_candidate(
+        SourceCandidate(
+            url="https://www.linkedin.com/posts/example_ai-agent-production",
+            title="AI Agent Production Checklist",
+            summary=(
+                "AI agent architecture with memory, MCP tools, retrieval, observability, "
+                "guardrails, model routing, and evaluation."
+            ),
+        ),
+        min_accept_score=0.1,
+    )
+
+    assert screened.decision == ScreeningDecision.REVIEW
+    assert "social_source_requires_review" in screened.reasons
+
+
+def test_relevance_uses_readme_or_page_preview_text() -> None:
+    screened = score_candidate(
+        SourceCandidate(
+            url="https://github.com/example/runtime",
+            title="example/runtime",
+            summary="A runtime toolkit.",
+            preview_text=(
+                "This project builds AI agent workflows with memory, tool calling, "
+                "structured outputs, and human approval checkpoints."
+            ),
+            repo_stars=500,
+            pushed_at=datetime.now(UTC),
+        )
+    )
+
+    assert screened.relevance_score >= 0.16
+    assert screened.decision in {ScreeningDecision.ACCEPT, ScreeningDecision.REVIEW}
+
+
 def test_relevance_does_not_count_arbitrary_topics_as_self_hits() -> None:
     screened = score_candidate(
         SourceCandidate(
@@ -126,6 +197,45 @@ def test_relevance_does_not_count_arbitrary_topics_as_self_hits() -> None:
 
     assert screened.relevance_score == 0.0
     assert screened.decision == ScreeningDecision.REJECT
+
+
+def test_markdown_preview_text_removes_boilerplate_markup() -> None:
+    preview = markdown_preview_text(
+        """
+        # Agent Runtime
+
+        ![badge](https://example.com/badge.svg)
+
+        Build durable LLM agents with tool calling and stateful workflows.
+
+        ```python
+        print("not preview")
+        ```
+        """
+    )
+
+    assert "Agent Runtime" in preview
+    assert "durable LLM agents" in preview
+    assert "print" not in preview
+
+
+def test_html_preview_text_uses_visible_first_screen_content() -> None:
+    soup = BeautifulSoup(
+        """
+        <html><body>
+        <nav>Navigation should not dominate.</nav>
+        <h1>Agent memory guide</h1>
+        <p>Build long-term memory for LLM agents with retrieval and user preferences.</p>
+        <footer>Footer links</footer>
+        </body></html>
+        """,
+        "html.parser",
+    )
+
+    preview = html_preview_text(soup)
+
+    assert "long-term memory" in preview
+    assert "Navigation" not in preview
 
 
 def test_supporting_terms_without_core_agent_signal_stay_below_threshold() -> None:
@@ -159,7 +269,7 @@ def test_agent_topic_without_primary_agent_signal_stays_below_threshold() -> Non
     assert screened.decision == ScreeningDecision.REJECT
 
 
-def test_non_authority_missing_date_is_out_of_expanded_scope() -> None:
+def test_non_authority_missing_date_is_allowed_when_other_scores_pass() -> None:
     screened = score_candidate(
         SourceCandidate(
             url="https://example.com/agent-workflow-post",
@@ -170,8 +280,8 @@ def test_non_authority_missing_date_is_out_of_expanded_scope() -> None:
         min_relevance_score=0.01,
     )
 
-    assert screened.decision == ScreeningDecision.REJECT
-    assert any("recency_status=date_check_required" in reason for reason in screened.reasons)
+    assert screened.decision == ScreeningDecision.ACCEPT
+    assert any("recency_status=date_unknown_allowed" in reason for reason in screened.reasons)
 
 
 def test_screen_candidates_accepts_relevant_authoritative_fresh_sources() -> None:
@@ -355,6 +465,37 @@ async def test_refine_screening_with_llm_updates_final_decision() -> None:
     assert source.decision == ScreeningDecision.REJECT
     assert source.llm_judgment is not None
     assert source.llm_judgment.reasoning.startswith("Application demo")
+
+
+@pytest.mark.asyncio
+async def test_refine_screening_with_llm_keeps_deterministic_decision_on_llm_error() -> None:
+    report = screen_candidates(
+        [
+            SourceCandidate(
+                url="https://github.com/example/agent-runtime",
+                title="example/agent-runtime",
+                summary="Build durable agent workflows with memory and tool calling.",
+                repo_stars=8_000,
+                repo_forks=500,
+                pushed_at=datetime.now(UTC),
+                topics=["agents"],
+            )
+        ],
+        min_accept_score=0.4,
+    )
+    pre_decision = report.sources[0].decision
+
+    refined = await refine_screening_with_llm(
+        report,
+        FailingLLMClient(),
+        max_candidates=1,
+    )
+
+    source = refined.sources[0]
+    assert refined.llm_enabled is True
+    assert refined.llm_judged == 0
+    assert source.decision == pre_decision
+    assert any("llm_screening_error=ConnectionError" in reason for reason in source.reasons)
 
 
 @pytest.mark.asyncio

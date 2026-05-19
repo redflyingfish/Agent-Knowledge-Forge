@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from agent_knowledge_harvester.memory.knowledge_chunks import write_knowledge_chunks
+from agent_knowledge_harvester.memory.knowledge_clusters import write_knowledge_clusters
 from agent_knowledge_harvester.schemas.analysis import KnowledgeIndex, KnowledgeIndexEntry
 from agent_knowledge_harvester.schemas.memory import RetrievalManifest, RetrievalManifestEntry
 from agent_knowledge_harvester.utils.files import stable_slug, write_json
@@ -59,6 +61,8 @@ def write_retrieval_manifest(index_path: Path, out_dir: Path | None = None) -> R
         render_retrieval_manifest(manifest),
         encoding="utf-8",
     )
+    write_knowledge_chunks(index_path, out_dir=target_dir)
+    write_knowledge_clusters(index_path, out_dir=target_dir)
     return manifest
 
 
@@ -91,7 +95,22 @@ def render_retrieval_manifest(manifest: RetrievalManifest) -> str:
                 f"- Claim: {entry.claim}",
                 f"- Agent move: {entry.agent_move}",
                 f"- Source: {entry.source_url}",
+                f"- Evidence count: {len(entry.evidence)}",
                 "",
             ]
         )
+    lines.extend(
+        [
+            "## RAG-Ready Chunk Files",
+            "",
+            (
+                "- `knowledge_chunks.jsonl`: newline-delimited chunks for vector stores "
+                "or file search."
+            ),
+            "- `knowledge_chunks.json`: same chunks as a single JSON document.",
+            "- `knowledge_chunks.md`: readable review copy of the chunk layer.",
+            "- `knowledge_clusters.md/json`: topic clusters for browsing and gap analysis.",
+            "",
+        ]
+    )
     return "\n".join(lines).strip() + "\n"

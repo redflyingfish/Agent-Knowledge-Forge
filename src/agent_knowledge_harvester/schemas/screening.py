@@ -17,6 +17,7 @@ class SourceCandidate(BaseModel):
     source_kind: str = "github_repository"
     discovered_from: str | None = None
     author: str | None = None
+    preview_text: str = ""
     repo_stars: int | None = None
     repo_forks: int | None = None
     owner_followers: int | None = None

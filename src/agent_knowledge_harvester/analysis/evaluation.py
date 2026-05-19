@@ -1,3 +1,4 @@
+from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -28,6 +29,11 @@ class EvaluationMetrics(BaseModel):
     avg_card_relevance: float = 0.0
     avg_card_frontier: float = 0.0
     topic_coverage: int = 0
+    evidence_coverage_rate: float = 0.0
+    avg_evidence_per_card: float = 0.0
+    unique_sources: int = 0
+    source_diversity_ratio: float = 0.0
+    max_source_concentration: float = 0.0
     durable_markdown_chars: int = 0
     notes: list[str] = Field(default_factory=list)
 
@@ -93,6 +99,20 @@ def apply_knowledge_index_metrics(metrics: EvaluationMetrics, index: KnowledgeIn
     metrics.avg_card_priority = average(entry.priority_score for entry in index.entries)
     metrics.avg_card_relevance = average(entry.relevance_score for entry in index.entries)
     metrics.avg_card_frontier = average(entry.frontier_score for entry in index.entries)
+    if not index.entries:
+        return
+    metrics.evidence_coverage_rate = round(
+        sum(1 for entry in index.entries if entry.evidence) / len(index.entries),
+        3,
+    )
+    metrics.avg_evidence_per_card = average(len(entry.evidence) for entry in index.entries)
+    source_counts = Counter(str(entry.source_url) for entry in index.entries)
+    metrics.unique_sources = len(source_counts)
+    metrics.source_diversity_ratio = round(metrics.unique_sources / len(index.entries), 3)
+    metrics.max_source_concentration = round(
+        max(source_counts.values()) / len(index.entries),
+        3,
+    )
 
 
 def average(values: Iterable[float]) -> float:
@@ -136,6 +156,11 @@ def render_evaluation(metrics: EvaluationMetrics) -> str:
         f"- avg_card_relevance: {metrics.avg_card_relevance:.3f}",
         f"- avg_card_frontier: {metrics.avg_card_frontier:.3f}",
         f"- topic_coverage: {metrics.topic_coverage}",
+        f"- evidence_coverage_rate: {metrics.evidence_coverage_rate:.3f}",
+        f"- avg_evidence_per_card: {metrics.avg_evidence_per_card:.3f}",
+        f"- unique_sources: {metrics.unique_sources}",
+        f"- source_diversity_ratio: {metrics.source_diversity_ratio:.3f}",
+        f"- max_source_concentration: {metrics.max_source_concentration:.3f}",
         f"- durable_markdown_chars: {metrics.durable_markdown_chars}",
     ]
     if metrics.notes:

@@ -3,6 +3,7 @@ from agent_knowledge_harvester.ingestion.preprocess import (
     TRUNCATION_MARKER,
     MarkdownPreprocessor,
     collapse_repeated_navigation,
+    extract_image_urls,
     extract_jina_reader_title,
     remove_noise_lines,
     strip_jina_reader_preamble,
@@ -48,6 +49,16 @@ def test_preprocessor_removes_noise_and_keeps_source_content() -> None:
     assert "durable agent workflows" in clean.markdown
     assert clean.metadata["preprocess_version"] == "phase1-v2"
     assert clean.metadata["was_truncated"] is False
+
+
+def test_extract_image_urls_keeps_remote_markdown_images_only() -> None:
+    urls = extract_image_urls(
+        "![Architecture](https://example.com/arch.png) "
+        "![Local](./local.png) "
+        "![Trace](http://example.com/trace.jpg)"
+    )
+
+    assert urls == ["https://example.com/arch.png", "http://example.com/trace.jpg"]
 
 
 def test_noise_removal_preserves_code_fence_content() -> None:

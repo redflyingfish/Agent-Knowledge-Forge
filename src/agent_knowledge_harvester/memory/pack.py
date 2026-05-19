@@ -289,6 +289,14 @@ def derive_core_rules(entries: list[AgentMemoryEntry]) -> list[str]:
         )
     if "agent_hardening" in topic_values or "safety" in topic_values:
         rules.append("Treat reliability, permissions, and failure modes as design requirements.")
+    if "guardrails" in topic_values or "identity_access" in topic_values:
+        rules.append("Make permissions, approvals, and access boundaries explicit.")
+    if "state_runtime" in topic_values:
+        rules.append("Persist state and checkpoints for workflows that must survive interruption.")
+    if "cost_latency" in topic_values or "model_routing" in topic_values:
+        rules.append(
+            "Budget latency, token use, and model routing as production design constraints."
+        )
     if "context_engineering" in topic_values:
         rules.append("Manage context explicitly with retrieval, compaction, and evidence budgets.")
     if "evaluation" in topic_values or "workflow" in topic_values:

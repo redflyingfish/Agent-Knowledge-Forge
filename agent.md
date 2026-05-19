@@ -24,16 +24,25 @@ This project should be developed in a teaching-assistant style. The coding agent
 - Treat analysis as a compact knowledge-distillation stage. Prefer source-grounded cards over long summaries.
 - The minimum useful agent knowledge card should explain: what the idea is, why it matters, how an agent builder should use it, relevant topics, quality scores, and short source evidence.
 - Maintain a cross-document priority index when analyzing batches, so the project can answer "what should I read first?" rather than only "what did I collect?"
+- Preserve a RAG/file-search distribution layer. `knowledge_chunks.jsonl` should expose compact, source-grounded chunks with URL, topics, scores, evidence, and retrieval-query hints.
+- Preserve a survey/navigation layer. `knowledge_clusters.md/json` should group cards by topic so humans and agents can inspect coverage gaps before the next run.
 - Keep durable human/Agent memory in Markdown whenever practical. Keep JSON when it is a machine-readable cache, reproducible intermediate, or API substrate.
 - For Agent-facing memory, prefer `agent_memory_pack.md` over raw analysis indexes when the goal is compact context injection.
 - For long-term memory, RAG, or review, preserve `agent_memory_pack.uncompressed.md/json`; do not confuse long-term storage with context-injection compression.
+- For retrieval use cases, prefer `knowledge_chunks.jsonl` or `retrieval_manifest.json` over direct prompt injection. Use compact memory only when the target agent needs always-on guidance.
+- For corpus quality, watch evidence coverage, source diversity, and source concentration. A knowledge pack dominated by one source is weaker even if individual cards look good.
 - For human learning, prefer `frontier_learning_report.md`; it should be English, source-attributed, and easier to study than the Agent memory pack.
 - Human learning reports must be written as readable learning guides with themes, explanations, and practice questions, not as direct translations of Agent memory entries.
+- Human learning reports may be substantially longer than compact memory. Prefer readable sections, comparison tables, glossary, reading path, design checklist, and exercises when the corpus is large.
 - Treat similar but more authoritative or clearer sources as rewrite/synthesis candidates instead of automatic duplicates.
 - When the user knows an Agent knowledge cutoff date, use memory-pack time filtering to exclude already-known entries.
-- For expanded discovery, use a 2026-first recency policy. Only include 2025-06-or-newer sources when they are official docs, specifications, authoritative product knowledge bases, or explicitly very hot.
+- For expanded discovery, use a 2025+ broad frontier policy. Include recent papers, repositories, docs, and technical blogs when they teach reusable agent engineering; unknown-date non-authority sources need review.
+- For broad runs, prefer automatic search discovery (`akf discover` or `akf run-team --discover`) over manually prepared seed URL files. Treat URL files as optional local supplements or debugging fixtures, not as the default product path.
+- Keep topic coverage broad enough for current agent engineering: memory/RAG, knowledge graphs, MCP/protocols, tool use/routing, structured outputs, reasoning/planning, stateful runtime, multi-agent handoffs, human review, guardrails, identity/access, observability/evaluation, deployment, cost/latency, coding agents, computer use, multimodal agents, and context engineering.
 - Prefer the multi-agent architecture for large-scale runs: discovery/filtering, deep reading, memory synthesis, human learning report writing, and quality evaluation should be separate roles with separate system prompts and handoff artifacts.
-- For end-to-end harvesting, prefer `harvester run-team` over manually chaining commands unless debugging or recovering one stage. The public UX should be one unified command; users should not need to start each specialist agent separately.
+- Treat strong research systems as design evidence when they fit the project: staged survey generation, schema-validated extraction, topic clustering, frozen evaluation sets, and explicit next-run feedback loops are preferred over ad hoc one-shot summaries.
+- For end-to-end harvesting, prefer `akf run-team` over manually chaining commands unless debugging or recovering one stage. The public UX should be one unified command; users should not need to start each specialist agent separately.
+- When implementing search connectors, keep provider-specific code behind a provider-neutral interface, normalize/dedupe URLs before screening, and write durable artifacts (`query_plan`, `search_results`, `candidate_urls`, `discovery_stats`) for reproducibility.
 - Large web runs must fail soft per source. Use `--ingestion-timeout` and `--max-markdown-chars` to skip hostile/slow pages and cap token pressure rather than letting one URL block the complete workflow.
 - For LLM deep reading, use bounded concurrency (`--llm-extraction-concurrency`) instead of separate user-started agents. Keep concurrency visible in metrics and avoid exceeding provider rate limits.
 - When implementing or documenting agent systems, prefer current production patterns found in the harvested corpus: strict tool schemas, sandboxed/truncated tool outputs, entity-isolated memory, memory decay, durable checkpointing, explicit handoff contracts, human review interrupts, and propagated trace context.
@@ -45,7 +54,7 @@ This project should be developed in a teaching-assistant style. The coding agent
 
 ## Self-Upgrade Loop
 
-- After running the harvester on real sources, inspect the generated artifacts before declaring the work done.
+- After running Agent Knowledge Forge on real sources, inspect the generated artifacts before declaring the work done.
 - For new frontier knowledge, prefer a pipeline of discover -> screen -> ingest -> analyze -> integrate memory -> prune obsolete low-value memory.
 - When the output is noisy, identify the smallest reusable system improvement rather than manually fixing one artifact.
 - Convert every discovered quality issue into a regression test when practical.

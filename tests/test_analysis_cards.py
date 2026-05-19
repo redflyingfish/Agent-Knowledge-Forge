@@ -9,6 +9,7 @@ from agent_knowledge_harvester.analysis.knowledge_cards import (
     normalize_table_rows,
     render_frontier_brief,
     render_index_markdown,
+    render_rich_index_markdown,
     split_markdown_sections,
     split_sentences,
     strip_markdown,
@@ -63,6 +64,20 @@ def test_detect_topics_finds_newer_agent_engineering_axes() -> None:
     assert KnowledgeTopic.RAG in topics
     assert KnowledgeTopic.OBSERVABILITY in topics
     assert KnowledgeTopic.EVALUATION in topics
+
+
+def test_detect_topics_finds_broader_agent_engineering_axes() -> None:
+    topics = detect_topics(
+        "Stateful runtime checkpointing, tool routing, human review, OAuth access, "
+        "model routing, and latency budgets are production agent concerns."
+    )
+
+    assert KnowledgeTopic.STATE_RUNTIME in topics
+    assert KnowledgeTopic.TOOL_ROUTING in topics
+    assert KnowledgeTopic.HUMAN_IN_LOOP in topics
+    assert KnowledgeTopic.IDENTITY_ACCESS in topics
+    assert KnowledgeTopic.MODEL_ROUTING in topics
+    assert KnowledgeTopic.COST_LATENCY in topics
 
 
 def test_sentence_splitter_handles_reader_spacing_and_abbreviations() -> None:
@@ -232,6 +247,9 @@ def test_knowledge_index_prioritizes_frontier_relevant_cards() -> None:
                 why_it_matters="MCP connectors wire agents to tools and workflows.",
                 agent_builder_takeaway="Treat MCP as an integration boundary.",
                 topics=[KnowledgeTopic.MCP, KnowledgeTopic.TOOL_USE, KnowledgeTopic.WORKFLOW],
+                implementation_notes=[
+                    "Expose each external capability as a typed tool with clear inputs."
+                ],
                 evidence=["MCP connectors wire agents to tools and workflows."],
                 relevance_score=0.8,
                 frontier_score=0.6,
@@ -260,6 +278,9 @@ def test_render_index_markdown_includes_priority_cards() -> None:
                         why_it_matters="MCP connectors wire agents to tools.",
                         agent_builder_takeaway="Treat MCP as an integration boundary.",
                         topics=[KnowledgeTopic.MCP],
+                        implementation_notes=[
+                            "Expose each external capability as a typed tool with clear inputs."
+                        ],
                         relevance_score=0.7,
                         frontier_score=0.5,
                     )
@@ -273,6 +294,45 @@ def test_render_index_markdown_includes_priority_cards() -> None:
     assert "# Knowledge Index" in rendered
     assert "Priority:" in rendered
     assert "MCP connectors" in rendered
+    assert "Why it matters:" in rendered
+    assert "Implementation details:" in rendered
+    assert "typed tool" in rendered
+
+
+def test_render_rich_index_markdown_includes_sources_topics_and_details() -> None:
+    source_url = "https://example.com/mcp"
+    index = build_knowledge_index(
+        [
+            AnalysisResult(
+                source_url=source_url,
+                title="MCP Guide",
+                cards=[
+                    KnowledgeCard(
+                        source_url=source_url,
+                        title="MCP connectors",
+                        one_sentence="MCP connectors wire agents to tools.",
+                        why_it_matters="They keep integrations reusable across clients.",
+                        agent_builder_takeaway="Treat MCP as an integration boundary.",
+                        topics=[KnowledgeTopic.MCP, KnowledgeTopic.TOOL_USE],
+                        implementation_notes=[
+                            "Define each external capability as a typed MCP tool."
+                        ],
+                        evidence=["MCP connectors wire agents to tools."],
+                        relevance_score=0.7,
+                        frontier_score=0.5,
+                    )
+                ],
+            )
+        ]
+    )
+
+    rendered = render_rich_index_markdown(index)
+
+    assert "# Knowledge Index Rich View" in rendered
+    assert "## Sources" in rendered
+    assert "## Topic Spotlight" in rendered
+    assert "They keep integrations reusable" in rendered
+    assert "typed MCP tool" in rendered
 
 
 def test_frontier_brief_summarizes_priority_index() -> None:

@@ -12,7 +12,10 @@ from agent_knowledge_harvester.analysis.llm_knowledge_cards import (
     LLMKnowledgeCardAnalyzer,
     analyze_directory_with_llm,
 )
-from agent_knowledge_harvester.analysis.quality_reflection import write_quality_reflection
+from agent_knowledge_harvester.analysis.quality_reflection import (
+    write_next_run_plan,
+    write_quality_reflection,
+)
 from agent_knowledge_harvester.analysis.source_screening import (
     GenericUrlMetadataClient,
     GitHubRepoMetadataClient,
@@ -60,7 +63,7 @@ class FrontierTeamRunner:
         llm_extraction_concurrency: int = 2,
         min_relevance: float = 0.18,
         max_cards_per_doc: int = 4,
-        max_index_entries: int = 50,
+        max_index_entries: int | None = None,
         memory_after: str | None = None,
         memory_min_priority: float = 0.0,
         memory_max_entries: int = 30,
@@ -249,7 +252,7 @@ class FrontierTeamRunner:
             "llm_judged": report.llm_judged,
         }
         stage.notes = [
-            "Applied the 2026-first discovery policy before handing URLs to deep reading.",
+            "Applied the 2025+ broad frontier policy before handing URLs to deep reading.",
             (
                 "The stage is deterministic by default; LLM screening can be enabled "
                 "as a semantic gate."
@@ -308,7 +311,7 @@ class FrontierTeamRunner:
         llm_extraction_concurrency: int,
         min_relevance: float,
         max_cards_per_doc: int,
-        max_index_entries: int,
+        max_index_entries: int | None,
         use_llm_extraction: bool,
     ) -> TeamStageTrace:
         role = self._role("deep_reader")
@@ -362,7 +365,10 @@ class FrontierTeamRunner:
         stage.output_artifacts = [
             str(analysis_dir / "knowledge_index.json"),
             str(analysis_dir / "knowledge_index.md"),
+            str(analysis_dir / "knowledge_index.rich.md"),
             str(analysis_dir / "retrieval_manifest.json"),
+            str(analysis_dir / "knowledge_chunks.jsonl"),
+            str(analysis_dir / "knowledge_clusters.json"),
         ]
         stage.metrics = {
             "selected_urls": len(selected_urls),
@@ -567,6 +573,7 @@ class FrontierTeamRunner:
                         "error": str(exc)[:1000],
                     },
                 )
+        write_next_run_plan(metrics=metrics, out_dir=evaluation_dir, reflection=reflection)
         return TeamStageTrace(
             role_id=role.role_id,
             status="completed",
@@ -580,6 +587,8 @@ class FrontierTeamRunner:
             output_artifacts=[
                 str(evaluation_dir / "evaluation_metrics.json"),
                 str(evaluation_dir / "evaluation_metrics.md"),
+                str(evaluation_dir / "next_run_plan.json"),
+                str(evaluation_dir / "next_run_plan.md"),
             ]
             + (
                 [

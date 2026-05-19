@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 from datetime import date
 
-DEFAULT_DISCOVERY_CUTOFF = date(2026, 1, 1)
-AUTHORITY_EXCEPTION_CUTOFF = date(2025, 6, 1)
+DEFAULT_DISCOVERY_CUTOFF = date(2025, 1, 1)
 AUTHORITY_SOURCE_TYPES = {
     "official_docs",
     "specification",
@@ -23,50 +22,39 @@ def evaluate_discovery_scope(
     published_at: date | None = None,
     very_hot: bool = False,
 ) -> DiscoveryScopeDecision:
-    """Evaluate whether a source fits the project's current discovery window."""
+    """Evaluate discovery recency as an advisory signal, not a hard gate."""
     normalized_type = source_type.strip().lower()
     if published_at is None:
         if normalized_type in AUTHORITY_SOURCE_TYPES:
             return DiscoveryScopeDecision(
                 in_scope=True,
-                status="date_check_required_authority_source",
+                status="date_unknown_authority_source",
                 reason=(
-                    "Authority source without a known date; keep only if the page is current "
-                    "or updated after the authority cutoff."
+                    "Authority source without a known date; keep it and let relevance, "
+                    "authority, and deep reading decide its value."
                 ),
             )
         return DiscoveryScopeDecision(
-            in_scope=False,
-            status="date_check_required",
-            reason="Non-authority source needs a date before it can enter expanded search.",
+            in_scope=True,
+            status="date_unknown_allowed",
+            reason=(
+                "Missing publication dates are common on GitHub, docs, and blogs; "
+                "use date as ranking context rather than a rejection reason."
+            ),
         )
 
     if published_at >= DEFAULT_DISCOVERY_CUTOFF:
         return DiscoveryScopeDecision(
             in_scope=True,
-            status="in_scope_2026",
-            reason="Default expanded search window accepts 2026 or newer sources.",
-        )
-
-    if published_at >= AUTHORITY_EXCEPTION_CUTOFF and normalized_type in AUTHORITY_SOURCE_TYPES:
-        return DiscoveryScopeDecision(
-            in_scope=True,
-            status="in_scope_authority_exception",
-            reason="Authority source is allowed from 2025-06-01 onward.",
-        )
-
-    if published_at >= AUTHORITY_EXCEPTION_CUTOFF and very_hot:
-        return DiscoveryScopeDecision(
-            in_scope=True,
-            status="in_scope_very_hot_exception",
-            reason="Very popular non-authority source is allowed from 2025-06-01 onward.",
+            status="in_scope_2025_plus",
+            reason="Default expanded search window accepts 2025 or newer sources.",
         )
 
     return DiscoveryScopeDecision(
-        in_scope=False,
-        status="out_of_future_search_scope",
+        in_scope=True,
+        status="legacy_date_allowed",
         reason=(
-            "Future expanded search should skip this source unless the user explicitly "
-            "keeps it as a legacy evaluation item."
+            "Older sources are allowed when otherwise relevant; freshness should lower "
+            "ranking but not block ingestion by itself."
         ),
     )

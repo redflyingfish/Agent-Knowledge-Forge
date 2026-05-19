@@ -44,6 +44,7 @@ class MarkdownPreprocessor:
 
     def clean(self, raw: RawDocument) -> CleanDocument:
         normalized = normalize_markdown(raw.markdown)
+        image_urls = extract_image_urls(normalized)
         reader_title = extract_jina_reader_title(normalized)
         markdown = strip_jina_reader_preamble(normalized)
         markdown = remove_leading_documentation_index(markdown)
@@ -78,6 +79,7 @@ class MarkdownPreprocessor:
                 "normalized_chars": len(normalized),
                 "clean_chars": len(markdown),
                 "was_truncated": was_truncated,
+                "image_urls": image_urls,
             },
         )
 
@@ -87,6 +89,18 @@ def normalize_markdown(markdown: str) -> str:
     markdown = re.sub(r"\n{4,}", "\n\n\n", markdown)
     markdown = re.sub(r"[ \t]+$", "", markdown, flags=re.MULTILINE)
     return markdown.strip()
+
+
+def extract_image_urls(markdown: str, limit: int = 12) -> list[str]:
+    """Extract remote Markdown image URLs without downloading them."""
+    urls: list[str] = []
+    for match in re.finditer(r"!\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", markdown):
+        url = match.group(1).strip()
+        if url.startswith(("http://", "https://")) and url not in urls:
+            urls.append(url)
+        if len(urls) >= limit:
+            break
+    return urls
 
 
 def extract_jina_reader_title(markdown: str) -> str | None:

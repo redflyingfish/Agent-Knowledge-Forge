@@ -63,3 +63,36 @@ class RetrievalManifest(BaseModel):
     entries: list[RetrievalManifestEntry] = Field(default_factory=list)
     topic_index: dict[str, list[str]] = Field(default_factory=dict)
     source_index_map: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class KnowledgeChunk(BaseModel):
+    chunk_id: str
+    source_url: HttpUrl
+    source_title: str | None = None
+    card_title: str
+    text: str
+    topics: list[KnowledgeTopic] = Field(default_factory=list)
+    primary_topic: KnowledgeTopic | None = None
+    priority_score: float = Field(ge=0.0, le=1.0)
+    relevance_score: float = Field(ge=0.0, le=1.0)
+    frontier_score: float = Field(ge=0.0, le=1.0)
+    evidence: list[str] = Field(default_factory=list)
+    retrieval_queries: list[str] = Field(default_factory=list)
+    generated_at: datetime
+    source_index: str
+
+
+class KnowledgeCluster(BaseModel):
+    cluster_id: str
+    title: str
+    primary_topic: KnowledgeTopic
+    topics: list[KnowledgeTopic] = Field(default_factory=list)
+    source_urls: list[HttpUrl] = Field(default_factory=list)
+    card_titles: list[str] = Field(default_factory=list)
+    top_claims: list[str] = Field(default_factory=list)
+    agent_moves: list[str] = Field(default_factory=list)
+    evidence_count: int = 0
+    entry_count: int = 0
+    avg_priority_score: float = Field(ge=0.0, le=1.0)
+    generated_at: datetime
+    source_index: str

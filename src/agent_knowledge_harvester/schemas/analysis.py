@@ -10,13 +10,25 @@ class KnowledgeTopic(StrEnum):
     CODING_AGENTS = "coding_agents"
     COMPUTER_USE = "computer_use"
     CONTEXT_ENGINEERING = "context_engineering"
+    COST_LATENCY = "cost_latency"
+    DATA_CONNECTORS = "data_connectors"
     DEPLOYMENT = "deployment"
+    GUARDRAILS = "guardrails"
+    HUMAN_IN_LOOP = "human_in_loop"
+    IDENTITY_ACCESS = "identity_access"
+    KNOWLEDGE_GRAPHS = "knowledge_graphs"
     MCP = "mcp"
+    MODEL_ROUTING = "model_routing"
+    MULTIMODAL_AGENTS = "multimodal_agents"
     MULTI_AGENT = "multi_agent"
     OBSERVABILITY = "observability"
     PLANNING = "planning"
+    PROMPT_ENGINEERING = "prompt_engineering"
     PROTOCOLS = "protocols"
+    REASONING = "reasoning"
+    STATE_RUNTIME = "state_runtime"
     TOOL_USE = "tool_use"
+    TOOL_ROUTING = "tool_routing"
     MEMORY = "memory"
     RAG = "rag"
     RETRIEVAL = "retrieval"
@@ -45,8 +57,10 @@ class KnowledgeIndexEntry(BaseModel):
     source_title: str | None = None
     card_title: str
     one_sentence: str
+    why_it_matters: str = ""
     agent_builder_takeaway: str
     topics: list[KnowledgeTopic] = Field(default_factory=list)
+    implementation_notes: list[str] = Field(default_factory=list)
     relevance_score: float = Field(ge=0.0, le=1.0)
     frontier_score: float = Field(ge=0.0, le=1.0)
     priority_score: float = Field(ge=0.0, le=1.0)

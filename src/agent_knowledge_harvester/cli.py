@@ -35,6 +35,14 @@ def deduplicate_urls(urls: list[str]) -> tuple[list[str], int]:
     return unique_urls, len(urls) - len(unique_urls)
 
 
+def validate_report_language(value: str) -> str:
+    """Validate the human report language selector used by CLI commands."""
+    normalized = value.strip().lower()
+    if normalized not in {"en", "zh", "both"}:
+        raise typer.BadParameter("--report-language must be one of: en, zh, both")
+    return normalized
+
+
 @app.command()
 def ingest(
     url: Annotated[
@@ -253,9 +261,14 @@ def analyze(
         typer.Option("--max-cards-per-doc", min=1, max=20),
     ] = 4,
     max_index_entries: Annotated[
-        int,
-        typer.Option("--max-index-entries", min=1, max=200),
-    ] = 30,
+        int | None,
+        typer.Option(
+            "--max-index-entries",
+            min=1,
+            max=1000,
+            help="Limit knowledge_index entries. Omit to keep every extracted card.",
+        ),
+    ] = None,
     use_llm_extraction: Annotated[
         bool,
         typer.Option("--use-llm-extraction/--no-use-llm-extraction"),
@@ -351,6 +364,7 @@ def evaluate(
 ) -> None:
     """Compute baseline metrics for screening and knowledge outputs."""
     from agent_knowledge_harvester.analysis.evaluation import evaluate_outputs, write_evaluation
+    from agent_knowledge_harvester.analysis.quality_reflection import write_next_run_plan
 
     metrics = evaluate_outputs(
         screening_report_path=screening_report,
@@ -358,7 +372,8 @@ def evaluate(
         markdown_dir=markdown_dir,
     )
     write_evaluation(metrics, out)
-    typer.echo(f"Wrote evaluation metrics to {out}")
+    write_next_run_plan(metrics=metrics, out_dir=out)
+    typer.echo(f"Wrote evaluation metrics and next-run plan to {out}")
 
 
 @app.command()
@@ -453,7 +468,47 @@ def retrieval_manifest(
 
     manifest = write_retrieval_manifest(index, out_dir=out)
     target_dir = out or index.parent
-    typer.echo(f"Wrote {manifest.total_entries} retrieval entries to {target_dir}")
+    typer.echo(
+        f"Wrote {manifest.total_entries} retrieval entries and RAG-ready chunks to {target_dir}"
+    )
+
+
+@app.command()
+def knowledge_chunks(
+    index: Annotated[
+        Path,
+        typer.Option("--index", help="Path to a knowledge_index.json file."),
+    ],
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", help="Output directory for knowledge chunk files."),
+    ] = None,
+) -> None:
+    """Write embedding-ready JSONL chunks from a knowledge index."""
+    from agent_knowledge_harvester.memory.knowledge_chunks import write_knowledge_chunks
+
+    chunks = write_knowledge_chunks(index, out_dir=out)
+    target_dir = out or index.parent
+    typer.echo(f"Wrote {len(chunks)} knowledge chunks to {target_dir}")
+
+
+@app.command()
+def knowledge_clusters(
+    index: Annotated[
+        Path,
+        typer.Option("--index", help="Path to a knowledge_index.json file."),
+    ],
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", help="Output directory for knowledge cluster files."),
+    ] = None,
+) -> None:
+    """Write survey-style topic clusters from a knowledge index."""
+    from agent_knowledge_harvester.memory.knowledge_clusters import write_knowledge_clusters
+
+    clusters = write_knowledge_clusters(index, out_dir=out)
+    target_dir = out or index.parent
+    typer.echo(f"Wrote {len(clusters)} knowledge clusters to {target_dir}")
 
 
 @app.command()
@@ -492,6 +547,77 @@ def query_plan(
 
 
 @app.command()
+def discover(
+    topic: Annotated[
+        list[str] | None,
+        typer.Option("--topic", help="Knowledge topic to expand. Repeatable."),
+    ] = None,
+    year: Annotated[
+        int,
+        typer.Option("--year", min=2025, max=2100),
+    ] = 2026,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="Search provider: tavily, brave, serpapi, or exa."),
+    ] = None,
+    max_queries: Annotated[
+        int | None,
+        typer.Option("--max-queries", min=1, help="Maximum expanded queries to execute."),
+    ] = None,
+    results_per_query: Annotated[
+        int | None,
+        typer.Option("--results-per-query", min=1, max=20),
+    ] = None,
+    concurrency: Annotated[
+        int | None,
+        typer.Option("--concurrency", min=1, max=8),
+    ] = None,
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Output directory for search discovery artifacts."),
+    ] = Path("data/discovery"),
+) -> None:
+    """Execute automatic search discovery and write candidate URLs."""
+    configure_logging(settings.logs_dir)
+    import asyncio
+
+    from agent_knowledge_harvester.discovery.query_expansion import (
+        build_query_plan,
+        parse_topic_values,
+    )
+    from agent_knowledge_harvester.discovery.search import (
+        SearchProviderNotConfiguredError,
+        create_search_provider,
+        run_search_discovery,
+        write_search_discovery_report,
+    )
+
+    try:
+        topics = parse_topic_values(topic)
+        search_provider = create_search_provider(settings, provider)
+    except (ValueError, SearchProviderNotConfiguredError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    plan = build_query_plan(topics=topics, year=year)
+    report = asyncio.run(
+        run_search_discovery(
+            plan,
+            search_provider,
+            year=year,
+            max_queries=max_queries or settings.search_max_queries,
+            results_per_query=results_per_query or settings.search_results_per_query,
+            concurrency=concurrency or settings.search_concurrency,
+        )
+    )
+    write_search_discovery_report(report, out)
+    typer.echo(
+        f"Discovered {report.stats.unique_urls} unique URL(s) from "
+        f"{report.stats.executed_queries} query/query(s) via {report.stats.provider}. "
+        f"Candidate URLs written to {out / 'candidate_urls.txt'}"
+    )
+
+
+@app.command()
 def agent_blueprint(
     out: Annotated[
         Path,
@@ -510,6 +636,37 @@ def agent_blueprint(
         f"Wrote {len(blueprint.roles)} role prompt(s) and "
         f"{len(blueprint.handoffs)} handoff contract(s) to {out}"
     )
+
+
+@app.command("mcp-server")
+def mcp_server(
+    run_dir: Annotated[
+        Path,
+        typer.Option(
+            "--run-dir",
+            help="Completed Agent Knowledge Forge run directory to expose.",
+        ),
+    ] = Path("data/team-run"),
+    transport: Annotated[
+        str,
+        typer.Option("--transport", help="MCP transport: stdio or streamable-http."),
+    ] = "stdio",
+    host: Annotated[
+        str,
+        typer.Option("--host", help="Host for streamable-http transport."),
+    ] = "127.0.0.1",
+    port: Annotated[
+        int,
+        typer.Option("--port", min=1, max=65535, help="Port for streamable-http transport."),
+    ] = 8000,
+) -> None:
+    """Expose a completed run as a read-only MCP knowledge server."""
+    if transport not in {"stdio", "streamable-http"}:
+        raise typer.BadParameter("--transport must be one of: stdio, streamable-http")
+    from agent_knowledge_harvester.mcp_server.server import create_knowledge_mcp_server
+
+    server = create_knowledge_mcp_server(run_dir=run_dir, host=host, port=port)
+    server.run(transport=transport)
 
 
 @app.command()
@@ -537,6 +694,33 @@ def run_team(
         int,
         typer.Option("--trending-limit", min=1, max=25),
     ] = 10,
+    discover_web: Annotated[
+        bool,
+        typer.Option(
+            "--discover/--no-discover",
+            help="Automatically search the web before screening and ingestion.",
+        ),
+    ] = False,
+    discovery_topic: Annotated[
+        list[str] | None,
+        typer.Option("--discovery-topic", help="Discovery topic to expand. Repeatable."),
+    ] = None,
+    discovery_year: Annotated[
+        int,
+        typer.Option("--discovery-year", min=2025, max=2100),
+    ] = 2026,
+    search_provider: Annotated[
+        str | None,
+        typer.Option("--search-provider", help="Search provider: tavily, brave, serpapi, or exa."),
+    ] = None,
+    search_max_queries: Annotated[
+        int | None,
+        typer.Option("--search-max-queries", min=1),
+    ] = None,
+    search_results_per_query: Annotated[
+        int | None,
+        typer.Option("--search-results-per-query", min=1, max=20),
+    ] = None,
     knowledge_index: Annotated[
         Path | None,
         typer.Option("--knowledge-index", help="Existing knowledge_index.json for novelty checks."),
@@ -561,6 +745,10 @@ def run_team(
         bool,
         typer.Option("--use-llm-reflection/--no-use-llm-reflection"),
     ] = False,
+    report_language: Annotated[
+        str,
+        typer.Option("--report-language", help="LLM human report language: en, zh, or both."),
+    ] = "en",
     use_llm_agents: Annotated[
         bool,
         typer.Option("--use-llm-agents/--no-use-llm-agents", help="Enable all LLM expert roles."),
@@ -571,8 +759,17 @@ def run_team(
     ] = 10,
     max_selected_urls: Annotated[
         int,
-        typer.Option("--max-selected-urls", min=1, max=100),
+        typer.Option("--max-selected-urls", min=1, max=500),
     ] = 20,
+    max_index_entries: Annotated[
+        int | None,
+        typer.Option(
+            "--max-index-entries",
+            min=1,
+            max=1000,
+            help="Limit knowledge_index entries. Omit to keep every extracted card.",
+        ),
+    ] = None,
     include_review: Annotated[
         bool,
         typer.Option(
@@ -619,11 +816,49 @@ def run_team(
     seed_urls = list(url or [])
     if url_file:
         seed_urls.extend(load_urls_from_file(url_file))
+    if discover_web:
+        from agent_knowledge_harvester.discovery.query_expansion import (
+            build_query_plan,
+            parse_topic_values,
+        )
+        from agent_knowledge_harvester.discovery.search import (
+            SearchProviderNotConfiguredError,
+            create_search_provider,
+            run_search_discovery,
+            write_search_discovery_report,
+        )
+
+        try:
+            topics = parse_topic_values(discovery_topic)
+            search_client = create_search_provider(runtime_settings, search_provider)
+        except (ValueError, SearchProviderNotConfiguredError) as exc:
+            raise typer.BadParameter(str(exc)) from exc
+
+        async def run_discovery() -> list[str]:
+            report = await run_search_discovery(
+                build_query_plan(topics=topics, year=discovery_year),
+                search_client,
+                year=discovery_year,
+                max_queries=search_max_queries or runtime_settings.search_max_queries,
+                results_per_query=(
+                    search_results_per_query or runtime_settings.search_results_per_query
+                ),
+                concurrency=runtime_settings.search_concurrency,
+            )
+            write_search_discovery_report(report, out / "00_discovery")
+            return report.candidate_urls
+
+        discovered_urls = asyncio.run(run_discovery())
+        seed_urls.extend(discovered_urls)
+        typer.echo(
+            f"Automatic discovery added {len(discovered_urls)} URL candidate(s); "
+            f"artifacts written to {out / '00_discovery'}"
+        )
     seed_urls, duplicate_count = deduplicate_urls(seed_urls)
     languages = normalize_trending_languages(trending_language)
     if not seed_urls and not languages:
         raise typer.BadParameter(
-            "provide at least one --url/--url-file or --trending-language"
+            "provide at least one --url/--url-file/--discover or --trending-language"
         )
     if duplicate_count:
         typer.echo(f"Skipped {duplicate_count} duplicate seed URL(s)")
@@ -633,6 +868,7 @@ def run_team(
         use_llm_memory = True
         use_llm_human_report = True
         use_llm_reflection = True
+    report_language = validate_report_language(report_language)
     llm_client = OpenAICompatibleLLMClient(runtime_settings)
     required_stages = []
     if use_llm_screening:
@@ -666,6 +902,7 @@ def run_team(
             include_review=include_review,
             ingestion_concurrency=concurrency,
             llm_extraction_concurrency=llm_extraction_concurrency,
+            max_index_entries=max_index_entries,
             memory_after=memory_after,
             use_llm_extraction=use_llm_extraction,
             use_llm_memory=use_llm_memory,
@@ -679,6 +916,12 @@ def run_team(
         )
 
     asyncio.run(run())
+    if use_llm_human_report:
+        write_index_based_human_reports(
+            run_dir=out,
+            report_language=report_language,
+            runtime_settings=runtime_settings,
+        )
 
 
 @app.command()
@@ -711,6 +954,10 @@ def finalize_run(
         bool,
         typer.Option("--use-llm-agents/--no-use-llm-agents", help="Enable all final LLM roles."),
     ] = False,
+    report_language: Annotated[
+        str,
+        typer.Option("--report-language", help="Human report language: en, zh, or both."),
+    ] = "en",
 ) -> None:
     """Finalize memory, human report, and evaluation from an existing partial run."""
     configure_logging(settings.logs_dir)
@@ -753,6 +1000,61 @@ def finalize_run(
         )
 
     asyncio.run(run())
+
+    if use_llm_human_report:
+        report_language = validate_report_language(report_language)
+        write_index_based_human_reports(
+            run_dir=run_dir,
+            report_language=report_language,
+            runtime_settings=settings,
+        )
+
+
+def write_index_based_human_reports(
+    run_dir: Path,
+    report_language: str,
+    runtime_settings: object,
+) -> None:
+    """Generate rich human reports from the full knowledge index."""
+    import asyncio
+
+    from agent_knowledge_harvester.llm.client import OpenAICompatibleLLMClient
+    from agent_knowledge_harvester.memory.llm_report import (
+        render_human_learning_report_from_index_with_llm,
+    )
+    from agent_knowledge_harvester.schemas.analysis import KnowledgeIndex
+
+    index_path = run_dir / "03_knowledge_base" / "knowledge_index.json"
+    report_dir = run_dir / "05_human_report"
+    if not index_path.exists():
+        typer.echo(f"Skipped index-based human report; missing {index_path}")
+        return
+
+    report_dir.mkdir(parents=True, exist_ok=True)
+    index = KnowledgeIndex.model_validate_json(index_path.read_text(encoding="utf-8"))
+    llm_client = OpenAICompatibleLLMClient(runtime_settings)
+
+    async def write_index_reports() -> None:
+        languages = ["en", "zh"] if report_language == "both" else [report_language]
+        for language in languages:
+            markdown = await render_human_learning_report_from_index_with_llm(
+                index,
+                llm_client=llm_client,
+                language=language,
+            )
+            suffix = "zh" if language == "zh" else "en"
+            (report_dir / f"frontier_learning_report.{suffix}.md").write_text(
+                markdown,
+                encoding="utf-8",
+            )
+            if language == "en":
+                (report_dir / "frontier_learning_report.md").write_text(
+                    markdown,
+                    encoding="utf-8",
+                )
+
+    asyncio.run(write_index_reports())
+    typer.echo(f"Wrote index-based human report language={report_language} to {report_dir}")
 
 
 def runtime_limit_overrides(
