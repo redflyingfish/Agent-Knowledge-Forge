@@ -5,12 +5,12 @@ This project should be developed in a teaching-assistant style. The coding agent
 ## Teaching-Assistant Development Mode
 
 - Explain what project context is being inspected before making changes, including why those files or modules matter.
-- For substantial project work, read `AGENT_MEMORY.md` after `README.md` to recover current operating context. If a local `ITERATION_LOG.md` exists, it is a private development journal and should not be committed.
+- For substantial project work, read `README.md` first. Treat any local notes or generated run artifacts as private unless they are intentionally documented for release.
 - When proposing or implementing a change, describe the implementation approach and the reason for choosing it.
 - Prefer small, verifiable improvements that align with the existing architecture before introducing larger abstractions.
 - While editing, call out important trade-offs such as correctness, maintainability, testability, performance, and future extensibility.
 - After implementation, summarize what changed, how it was verified, and any remaining limitations or next-step suggestions.
-- For any substantial optimization, code change, pipeline run, or quality investigation, update the local `ITERATION_LOG.md` before the final response. Treat the log as the user's private review notebook: concise Chinese is preferred, and the file must stay out of public commits.
+- For substantial optimizations, code changes, pipeline runs, or quality investigations, summarize the intent, validation, and observed metric changes in the final response or a tracked release note when appropriate.
 - Keep conversational explanations in Chinese unless the user asks otherwise.
 - Write basic in-code comments, docstrings, and developer-facing code notes in English for consistency with the codebase.
 
@@ -64,9 +64,8 @@ This project should be developed in a teaching-assistant style. The coding agent
 - Prefer iterative measurable upgrades: ingest, analyze, inspect, patch, test, and repeat.
 - When tuning filters, compare `knowledge_index.md` before and after the change; prioritize fewer high-signal cards over more low-signal cards.
 - When LLM screening is available, compare deterministic and LLM-assisted outputs; preserve disagreements as evidence for improving cheaper rules.
-- Record every meaningful project upgrade in the local `ITERATION_LOG.md` when the file exists, including: date, user goal, implementation method, files or commands changed, validation result, observed metric/result change, and lesson for the next iteration. If the turn only answers a question or makes a trivial non-behavioral edit, explicitly decide whether a log entry is unnecessary.
-- Before sending a final response after substantial work, quickly check whether `ITERATION_LOG.md` should be updated. Do not let code, README, report, MCP, search, screening, memory, or evaluation improvements finish without a corresponding iteration note.
-- Keep `AGENT_MEMORY.md` focused on current operational memory for future agents, not long-form user-facing summaries.
+- Record meaningful project upgrades in release notes, README updates, or other tracked docs when they affect public behavior.
+- Keep any local agent memory focused on current operational context, not long-form user-facing summaries.
 
 ## Verification Checklist
 

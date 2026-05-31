@@ -24,6 +24,9 @@ logs/
 # Local project journal; useful during development but too noisy for OSS release.
 ITERATION_LOG.md
 
+# Local agent working memory. Keep public guidance in agent.md and README.md.
+AGENT_MEMORY.md
+
 # Generated harvesting outputs.
 # Keep the repo lightweight; these files can contain large crawled pages,
 # paid LLM outputs, local experiments, and source snapshots.

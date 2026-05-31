@@ -362,29 +362,6 @@ Curated evaluation sets can be kept locally under `data/` to calibrate screening
 
 Current test coverage includes ingestion timeout behavior, source screening, novelty checks, LLM JSON parsing, LLM knowledge-card extraction, query expansion, multi-agent runtime traces, memory-pack generation, retrieval manifests, human-report prompts, and quality reflection.
 
-## What To Commit
-
-Recommended for open source:
-
-- `src/`
-- `tests/`
-- `scripts/`
-- `pyproject.toml`
-- `LICENSE`
-- `.env.example`
-- `.gitignore`
-- `README.md`
-- `agent.md`
-- `AGENT_MEMORY.md`
-
-Keep ignored:
-
-- `.env`, `.env.*` with real keys
-- `.venv/`
-- `.pytest_cache/`, `.ruff_cache/`, `__pycache__/`
-- `logs/`
-- generated `data/*` runs, crawled pages, paid LLM outputs, evaluation sets, and local experiments
-
 ## Project Status
 
 This is a research/engineering prototype intended to demonstrate a production-oriented agent knowledge pipeline. It is suitable for experimentation, portfolio review, and further extension into a hosted RAG/MCP knowledge service.
