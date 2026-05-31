@@ -80,6 +80,28 @@ def test_detect_topics_finds_broader_agent_engineering_axes() -> None:
     assert KnowledgeTopic.COST_LATENCY in topics
 
 
+def test_detect_topics_finds_task_hardness_axis() -> None:
+    topics = detect_topics(
+        "Hard agent benchmarks should label task hardness by reasoning depth, "
+        "tool chain length, edge cases, and long horizon failure modes."
+    )
+
+    assert KnowledgeTopic.HARDNESS in topics
+    assert KnowledgeTopic.EVALUATION in topics
+
+
+def test_detect_topics_finds_skills_and_coding_tool_topics() -> None:
+    topics = detect_topics(
+        "Claude Code skills can be packaged in SKILL.md files, while OpenClaw "
+        "explores coding agent workflows and tool permissions."
+    )
+
+    assert KnowledgeTopic.SKILLS in topics
+    assert KnowledgeTopic.CLAUDE_CODE in topics
+    assert KnowledgeTopic.OPENCLAW in topics
+    assert KnowledgeTopic.CODING_AGENTS in topics
+
+
 def test_sentence_splitter_handles_reader_spacing_and_abbreviations() -> None:
     sentences = split_sentences(
         "Agents connect to systems.Using MCP, they can call tools (e.g. search engines)."
@@ -297,6 +319,38 @@ def test_render_index_markdown_includes_priority_cards() -> None:
     assert "Why it matters:" in rendered
     assert "Implementation details:" in rendered
     assert "typed tool" in rendered
+
+
+def test_knowledge_index_preserves_source_media_assets() -> None:
+    source_url = "https://example.com/mcp"
+    index = build_knowledge_index(
+        [
+            AnalysisResult(
+                source_url=source_url,
+                image_urls=["https://example.com/mcp-architecture.png"],
+                table_snippets=[
+                    "| Layer | Role |\n| --- | --- |\n| Client | Calls tools |"
+                ],
+                cards=[
+                    KnowledgeCard(
+                        source_url=source_url,
+                        title="MCP architecture",
+                        one_sentence="MCP separates clients from tool servers.",
+                        why_it_matters="The boundary keeps integrations reusable.",
+                        agent_builder_takeaway="Expose external systems as typed tools.",
+                        topics=[KnowledgeTopic.MCP],
+                        relevance_score=0.8,
+                        frontier_score=0.6,
+                    )
+                ],
+            )
+        ]
+    )
+
+    entry = index.entries[0]
+
+    assert entry.image_urls == ["https://example.com/mcp-architecture.png"]
+    assert "Client | Calls tools" in entry.table_snippets[0]
 
 
 def test_render_rich_index_markdown_includes_sources_topics_and_details() -> None:

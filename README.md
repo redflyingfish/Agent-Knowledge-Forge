@@ -1,16 +1,220 @@
 # Agent Knowledge Forge
 
-Agent Knowledge Forge is a multi-agent research pipeline for collecting, screening, reading, and packaging frontier AI-agent engineering knowledge. It is designed to turn fast-changing sources such as official docs, specifications, GitHub repositories, papers, and technical articles into:
+Agent Knowledge Forge is a multi-agent knowledge pipeline for frontier AI-agent engineering. It searches recent sources, screens noisy results, extracts source-grounded knowledge cards, and exports artifacts that other agents or humans can use.
 
-- source-grounded knowledge cards
-- RAG/MCP-friendly retrieval manifests
-- embedding-ready JSONL knowledge chunks
-- long-term memory packs with evidence
-- compact agent-context memory
+It produces:
+
+- source-grounded `knowledge_index.md/json`
+- RAG-ready `knowledge_chunks.jsonl`
+- compact and uncompressed agent memory packs
 - human-readable learning reports
-- evaluation metrics, quality reflection, and next-run plans
+- a read-only MCP server over completed runs
+- evaluation metrics and next-run improvement plans
 
-The project focuses on practical agent-development knowledge: memory, RAG, MCP/tool protocols, multi-agent handoffs, planning/reasoning, tool routing, durable state/runtime, observability, coding agents, browser/computer use, context engineering, identity/access, human review, guardrails, cost/latency, safety, and production hardening.
+The project focuses on practical agent-development knowledge: memory, RAG, MCP/tool protocols, multi-agent handoffs, planning/reasoning, task hardness, tool routing, durable state/runtime, observability, coding agents, browser/computer use, context engineering, identity/access, human review, guardrails, cost/latency, safety, and production hardening.
+
+## Requirements
+
+- Python 3.11+
+- One OpenAI-compatible LLM API key for LLM stages
+- One search API key for automatic discovery: Tavily, Brave Search, SerpAPI, or Exa
+- Playwright Chromium dependencies for Crawl4AI fallback ingestion
+
+The shortest path is `pip install -r requirements.txt`. For development, install the package in editable mode with the `dev` extra.
+
+## Install
+
+```bash
+git clone https://github.com/redflyingfish/Agent-Knowledge-Forge.git
+cd Agent-Knowledge-Forge
+
+python -m venv .venv
+.venv/bin/python -m pip install --upgrade pip setuptools wheel
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m playwright install --with-deps chromium
+```
+
+If you use `uv`:
+
+```bash
+uv sync --extra dev
+bash scripts/install_playwright_deps.sh
+```
+
+## Configure
+
+Create `.env` from the example:
+
+```bash
+cp .env.example .env
+```
+
+Minimal LLM configuration:
+
+```bash
+AKH_LLM_API_KEY=your_provider_key
+AKH_LLM_BASE_URL=https://api.deepseek.com/v1
+AKH_LLM_FAST_MODEL=deepseek-chat
+AKH_LLM_PRO_MODEL=deepseek-reasoner
+```
+
+Minimal search configuration:
+
+```bash
+AKH_SEARCH_PROVIDER=tavily
+AKH_SEARCH_API_KEY=your_search_key
+AKH_SEARCH_MAX_QUERIES=80
+AKH_SEARCH_RESULTS_PER_QUERY=5
+```
+
+Provider-specific search keys are also supported:
+
+```bash
+AKH_TAVILY_API_KEY=...
+AKH_BRAVE_SEARCH_API_KEY=...
+AKH_SERPAPI_API_KEY=...
+AKH_EXA_API_KEY=...
+```
+
+Check LLM configuration without spending tokens:
+
+```bash
+.venv/bin/akf llm-check --stage screening
+```
+
+Make a tiny test call:
+
+```bash
+.venv/bin/akf llm-check --stage screening --ping
+```
+
+The legacy `harvester` command is kept as a compatibility alias for `akf`.
+
+## Quick Start
+
+Run automatic discovery only:
+
+```bash
+.venv/bin/akf discover \
+  --year 2026 \
+  --max-queries 40 \
+  --results-per-query 5 \
+  --out data/discovery-run
+```
+
+Run the complete multi-agent pipeline:
+
+```bash
+.venv/bin/akf run-team \
+  --discover \
+  --discovery-year 2026 \
+  --use-llm-agents \
+  --report-language both \
+  --llm-max-candidates 25 \
+  --max-selected-urls 80 \
+  --include-review \
+  --concurrency 4 \
+  --llm-extraction-concurrency 2 \
+  --ingestion-timeout 45 \
+  --max-markdown-chars 120000 \
+  --out data/broad-run
+```
+
+Run a tiny explicit-URL smoke test:
+
+```bash
+.venv/bin/akf run-team \
+  --url https://modelcontextprotocol.io/specification/2025-06-18 \
+  --use-llm-agents \
+  --out data/team-run
+```
+
+After a run, inspect:
+
+```text
+data/<run>/03_knowledge_base/knowledge_index.md
+data/<run>/03_knowledge_base/knowledge_chunks.jsonl
+data/<run>/04_memory_packs/agent_memory_pack.compact.md
+data/<run>/05_human_report/frontier_learning_report.md
+data/<run>/06_evaluation/evaluation_metrics.md
+```
+
+Mine candidate emerging topics from the ingested articles:
+
+```bash
+.venv/bin/akf topic-discovery \
+  --in-dir data/broad-run/02_ingested \
+  --search-report data/broad-run/00_discovery/search_results.json \
+  --out data/broad-run/07_topic_discovery
+```
+
+This is a bounded topic-mining check. It does not mutate the fixed taxonomy or
+keep searching forever. It reports known-topic coverage, candidate new topics,
+promoted cross-source topics, source buckets such as `frontier_scout` and
+`stop_signal`, and suggested follow-up queries. To test semantic extraction,
+add `--use-llm-topic-mining`.
+
+## Common Make Commands
+
+The same workflow is available through `make`:
+
+```bash
+make install-dev
+make playwright
+make llm-check
+make check
+make discover OUT=data/discovery-run YEAR=2026
+make run OUT=data/broad-run YEAR=2026
+make topic-discovery RUN_DIR=data/broad-run
+make smoke
+make mcp-server RUN_DIR=data/broad-run
+```
+
+## MCP Server
+
+Expose a completed run as a read-only MCP knowledge server:
+
+```bash
+.venv/bin/akf mcp-server \
+  --run-dir data/broad-run
+```
+
+The default transport is `stdio`, which is the usual mode for local MCP clients. The server exposes:
+
+- `get_corpus_summary`
+- `list_topics`
+- `search_agent_knowledge`
+- `get_knowledge_card`
+- `read_memory_pack`
+- `read_human_report`
+
+Example MCP client command configuration:
+
+```json
+{
+  "mcpServers": {
+    "agent-knowledge-forge": {
+      "command": "/absolute/path/to/.venv/bin/akf",
+      "args": [
+        "mcp-server",
+        "--run-dir",
+        "/absolute/path/to/data/broad-run"
+      ]
+    }
+  }
+}
+```
+
+For quick local HTTP inspection:
+
+```bash
+.venv/bin/akf mcp-server \
+  --run-dir data/broad-run \
+  --transport streamable-http \
+  --host 127.0.0.1 \
+  --port 8000
+```
 
 ## Why This Exists
 
@@ -22,6 +226,7 @@ The design is intentionally close to recent automated research and survey system
 
 - **Unified multi-agent runner**: one command runs automatic search discovery, filtering, deep reading, memory synthesis, human report writing, and evaluation.
 - **Provider-neutral search discovery**: executes expanded frontier-agent queries through Tavily, Brave Search, SerpAPI, or Exa, then writes deduplicated URL candidates.
+- **Emerging topic mining**: reads ingested frontier/stop-signal sources, extracts candidate new topics with deterministic or LLM-assisted parsing, and reports coverage/yield metrics without unbounded re-search.
 - **LLM expert stages**: optional OpenAI-compatible LLM calls for semantic screening, knowledge-card extraction, compact memory synthesis, human learning reports, and quality reflection.
 - **2025+ broad frontier discovery policy**: plans broad searches across recent papers, repos, docs, and technical blogs, then screens candidates with relevance, authority, preview text, and optional LLM judgment.
 - **Robust ingestion**: Jina Reader first, Crawl4AI fallback, per-URL hard timeout, Markdown cleanup, and token/character budgets.
@@ -61,186 +266,6 @@ quality_evaluator
 ```
 
 The specialist agents are role stages inside one orchestrated command. Users do not need to start separate background agents.
-
-## Installation
-
-```bash
-git clone <your-repo-url>
-cd agent-knowledge-forge
-
-python -m venv .venv
-.venv/bin/python -m pip install --upgrade pip setuptools wheel
-.venv/bin/python -m pip install -e ".[dev]"
-.venv/bin/python -m playwright install --with-deps chromium
-```
-
-If you use `uv`:
-
-```bash
-uv sync --extra dev
-bash scripts/install_playwright_deps.sh
-```
-
-## LLM Configuration
-
-Copy `.env.example` to `.env` and set an OpenAI-compatible provider.
-
-```bash
-AKH_LLM_API_KEY=your_provider_key
-AKH_LLM_BASE_URL=https://api.deepseek.com/v1
-AKH_LLM_FAST_MODEL=deepseek-chat
-AKH_LLM_PRO_MODEL=deepseek-reasoner
-```
-
-The fast model is used for screening. The pro model is used for extraction, memory synthesis, reports, and reflection. If both models share the same provider/account, one `AKH_LLM_API_KEY` is enough.
-
-Check configuration without spending tokens:
-
-```bash
-.venv/bin/akf llm-check --stage screening
-```
-
-Make a tiny test call:
-
-```bash
-.venv/bin/akf llm-check --stage screening --ping
-```
-
-The legacy `harvester` command is kept as a compatibility alias for `akf`.
-
-## Search Configuration
-
-Automatic discovery uses a web search API. Configure one provider in `.env`:
-
-```bash
-AKH_SEARCH_PROVIDER=tavily
-AKH_SEARCH_API_KEY=your_search_key
-AKH_SEARCH_MAX_QUERIES=80
-AKH_SEARCH_RESULTS_PER_QUERY=5
-AKH_SEARCH_CONCURRENCY=3
-```
-
-Supported providers are `tavily`, `brave`, `serpapi`, and `exa`. You can also use provider-specific key variables such as `AKH_TAVILY_API_KEY`, `AKH_BRAVE_SEARCH_API_KEY`, `AKH_SERPAPI_API_KEY`, or `AKH_EXA_API_KEY`.
-
-## Quick Start
-
-Run automatic discovery only:
-
-```bash
-.venv/bin/akf discover \
-  --year 2026 \
-  --max-queries 40 \
-  --results-per-query 5 \
-  --out data/discovery-run
-```
-
-This writes `candidate_urls.txt`, `search_results.md/json`, `query_plan.md/json`, and `discovery_stats.json`.
-
-Run the complete multi-agent pipeline with automatic discovery:
-
-```bash
-.venv/bin/akf run-team \
-  --discover \
-  --discovery-year 2026 \
-  --use-llm-agents \
-  --report-language both \
-  --llm-max-candidates 25 \
-  --max-selected-urls 80 \
-  --include-review \
-  --concurrency 4 \
-  --llm-extraction-concurrency 2 \
-  --ingestion-timeout 45 \
-  --max-markdown-chars 120000 \
-  --out data/broad-run
-```
-
-Run the complete pipeline with explicit URLs when you want a tiny reproducible smoke test:
-
-```bash
-.venv/bin/akf run-team \
-  --url https://modelcontextprotocol.io/specification/2025-06-18 \
-  --use-llm-agents \
-  --out data/team-run
-```
-
-Optionally combine search discovery with GitHub Trending:
-
-```bash
-.venv/bin/akf run-team \
-  --discover \
-  --discovery-year 2026 \
-  --trending-language Python \
-  --trending-language TypeScript \
-  --trending-since weekly \
-  --trending-limit 25 \
-  --use-llm-agents \
-  --llm-max-candidates 25 \
-  --max-selected-urls 80 \
-  --include-review \
-  --concurrency 4 \
-  --llm-extraction-concurrency 2 \
-  --ingestion-timeout 45 \
-  --max-markdown-chars 120000 \
-  --out data/broad-run
-```
-
-Optionally add your own URL file if you already maintain one locally:
-
-```bash
-.venv/bin/akf run-team \
-  --url-file data/my_urls.txt \
-  --trending-language Python \
-  --use-llm-agents \
-  --include-review \
-  --out data/broad-run
-```
-
-`--url-file` is an optional supplement, not a required project artifact. Generated runs and local URL lists belong under `data/`, which is ignored by default.
-
-## MCP Server
-
-Expose a completed run as a read-only MCP knowledge server:
-
-```bash
-.venv/bin/akf mcp-server \
-  --run-dir data/broad-run
-```
-
-The default transport is `stdio`, which is the usual mode for local MCP clients. The server exposes these tools:
-
-- `get_corpus_summary`: inspect corpus size, topics, and top sources.
-- `list_topics`: list available topic names and card counts.
-- `search_agent_knowledge`: search source-grounded knowledge cards by query, topic, and priority.
-- `get_knowledge_card`: fetch the full card returned by search.
-- `read_memory_pack`: read working, compact, ultra-compact, LLM-compact, or uncompressed memory packs.
-- `read_human_report`: read the generated English, Chinese, or default human report.
-
-Example MCP client command configuration:
-
-```json
-{
-  "mcpServers": {
-    "agent-knowledge-forge": {
-      "command": "/absolute/path/to/.venv/bin/akf",
-      "args": [
-        "mcp-server",
-        "--run-dir",
-        "/absolute/path/to/data/broad-run"
-      ]
-    }
-  }
-}
-```
-
-For quick local HTTP inspection:
-
-```bash
-.venv/bin/akf mcp-server \
-  --run-dir data/broad-run \
-  --transport streamable-http \
-  --host 127.0.0.1 \
-  --port 8000
-```
 
 Generate an expanded search plan without network calls:
 

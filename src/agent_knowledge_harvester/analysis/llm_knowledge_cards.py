@@ -11,6 +11,7 @@ from agent_knowledge_harvester.analysis.knowledge_cards import (
     build_knowledge_index,
     clamp_text,
     detect_topics,
+    document_asset_list,
     iter_ingestion_json_files,
     load_ingestion_result,
     render_frontier_brief,
@@ -201,6 +202,8 @@ def parse_llm_analysis_result(
         source_url=document.source_url,
         title=document.title,
         cards=cards,
+        image_urls=document_asset_list(document, "image_urls", limit=6),
+        table_snippets=document_asset_list(document, "table_snippets", limit=4),
         skipped_reason=skipped_reason,
     )
 
@@ -223,6 +226,8 @@ def parse_llm_card(raw_card: dict[str, Any], document: CleanDocument) -> Knowled
         "topics": topics,
         "implementation_notes": clamp_list(raw_card.get("implementation_notes"), 4, 220),
         "evidence": clamp_list(raw_card.get("evidence"), 3, 220),
+        "image_urls": document_asset_list(document, "image_urls", limit=3),
+        "table_snippets": document_asset_list(document, "table_snippets", limit=2),
         "relevance_score": clamp_score(raw_card.get("relevance_score"), default=0.5),
         "frontier_score": clamp_score(raw_card.get("frontier_score"), default=0.3),
     }

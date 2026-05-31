@@ -5,6 +5,7 @@ from agent_knowledge_harvester.ingestion.preprocess import (
     collapse_repeated_navigation,
     extract_image_urls,
     extract_jina_reader_title,
+    extract_markdown_tables,
     remove_noise_lines,
     strip_jina_reader_preamble,
     technical_signal_score,
@@ -59,6 +60,25 @@ def test_extract_image_urls_keeps_remote_markdown_images_only() -> None:
     )
 
     assert urls == ["https://example.com/arch.png", "http://example.com/trace.jpg"]
+
+
+def test_extract_markdown_tables_keeps_compact_source_tables() -> None:
+    tables = extract_markdown_tables(
+        """
+        Intro text.
+
+        | Feature | Agent impact |
+        | --- | --- |
+        | Checkpoints | Resume long workflows |
+        | Guardrails | Block unsafe tool calls |
+
+        Outro text.
+        """
+    )
+
+    assert len(tables) == 1
+    assert "| Feature | Agent impact |" in tables[0]
+    assert "| Guardrails | Block unsafe tool calls |" in tables[0]
 
 
 def test_noise_removal_preserves_code_fence_content() -> None:

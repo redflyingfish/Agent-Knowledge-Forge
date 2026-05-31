@@ -8,12 +8,14 @@ class KnowledgeTopic(StrEnum):
     AGENT_ARCHITECTURE = "agent_architecture"
     AGENT_HARDENING = "agent_hardening"
     CODING_AGENTS = "coding_agents"
+    CLAUDE_CODE = "claude_code"
     COMPUTER_USE = "computer_use"
     CONTEXT_ENGINEERING = "context_engineering"
     COST_LATENCY = "cost_latency"
     DATA_CONNECTORS = "data_connectors"
     DEPLOYMENT = "deployment"
     GUARDRAILS = "guardrails"
+    HARDNESS = "hardness"
     HUMAN_IN_LOOP = "human_in_loop"
     IDENTITY_ACCESS = "identity_access"
     KNOWLEDGE_GRAPHS = "knowledge_graphs"
@@ -33,8 +35,10 @@ class KnowledgeTopic(StrEnum):
     RAG = "rag"
     RETRIEVAL = "retrieval"
     SAFETY = "safety"
+    SKILLS = "skills"
     STRUCTURED_OUTPUTS = "structured_outputs"
     WORKFLOW = "workflow"
+    OPENCLAW = "openclaw"
     EVALUATION = "evaluation"
     FRONTIER_SIGNAL = "frontier_signal"
 
@@ -48,6 +52,8 @@ class KnowledgeCard(BaseModel):
     topics: list[KnowledgeTopic] = Field(default_factory=list)
     implementation_notes: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
+    image_urls: list[str] = Field(default_factory=list)
+    table_snippets: list[str] = Field(default_factory=list)
     relevance_score: float = Field(ge=0.0, le=1.0)
     frontier_score: float = Field(ge=0.0, le=1.0)
 
@@ -65,6 +71,8 @@ class KnowledgeIndexEntry(BaseModel):
     frontier_score: float = Field(ge=0.0, le=1.0)
     priority_score: float = Field(ge=0.0, le=1.0)
     evidence: list[str] = Field(default_factory=list)
+    image_urls: list[str] = Field(default_factory=list)
+    table_snippets: list[str] = Field(default_factory=list)
 
 
 class KnowledgeIndex(BaseModel):
@@ -91,6 +99,8 @@ class AnalysisResult(BaseModel):
     title: str | None = None
     analyzed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     cards: list[KnowledgeCard] = Field(default_factory=list)
+    image_urls: list[str] = Field(default_factory=list)
+    table_snippets: list[str] = Field(default_factory=list)
     skipped_reason: str | None = None
 
 

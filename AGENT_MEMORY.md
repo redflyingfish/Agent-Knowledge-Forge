@@ -114,7 +114,7 @@ Use `cleanup --yes` only after confirming the listed scratch artifacts have been
 - `run-team --discover` is now the preferred broad-run path. It writes automatic search artifacts under `<run>/00_discovery` before screening.
 - Supported search providers are `tavily`, `brave`, `serpapi`, and `exa`, configured through `AKH_SEARCH_PROVIDER` plus either `AKH_SEARCH_API_KEY` or a provider-specific key alias.
 - Topic taxonomy now includes newer agent-engineering axes: `agent_hardening`, `context_engineering`, `rag`, `observability`, `coding_agents`, `computer_use`, `protocols`, `structured_outputs`, `safety`, and `deployment`.
-- Expanded topic taxonomy also includes `reasoning`, `tool_routing`, `guardrails`, `human_in_loop`, `identity_access`, `state_runtime`, `cost_latency`, `data_connectors`, `knowledge_graphs`, `prompt_engineering`, `model_routing`, and `multimodal_agents`.
+- Expanded topic taxonomy also includes `reasoning`, `tool_routing`, `hardness`, `guardrails`, `human_in_loop`, `identity_access`, `state_runtime`, `cost_latency`, `data_connectors`, `knowledge_graphs`, `prompt_engineering`, `model_routing`, and `multimodal_agents`.
 - Topics are search seeds, not hard boundaries. Query planning expands each topic into seed terms, adjacent terms, authority queries, implementation queries, and risk/evaluation queries.
 - Frontier scout queries are intentionally broad, so the system can discover new concepts outside the current taxonomy.
 - Source hub queries target official/spec/repo/paper hubs to reduce dependence on generic keyword search.

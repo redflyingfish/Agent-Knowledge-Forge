@@ -45,6 +45,7 @@ class MarkdownPreprocessor:
     def clean(self, raw: RawDocument) -> CleanDocument:
         normalized = normalize_markdown(raw.markdown)
         image_urls = extract_image_urls(normalized)
+        table_snippets = extract_markdown_tables(normalized)
         reader_title = extract_jina_reader_title(normalized)
         markdown = strip_jina_reader_preamble(normalized)
         markdown = remove_leading_documentation_index(markdown)
@@ -80,6 +81,7 @@ class MarkdownPreprocessor:
                 "clean_chars": len(markdown),
                 "was_truncated": was_truncated,
                 "image_urls": image_urls,
+                "table_snippets": table_snippets,
             },
         )
 
@@ -101,6 +103,48 @@ def extract_image_urls(markdown: str, limit: int = 12) -> list[str]:
         if len(urls) >= limit:
             break
     return urls
+
+
+def extract_markdown_tables(
+    markdown: str,
+    *,
+    max_tables: int = 4,
+    max_chars: int = 1200,
+) -> list[str]:
+    """Extract compact Markdown table blocks without interpreting their semantics."""
+    tables: list[str] = []
+    lines = markdown.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not looks_like_table_row(line):
+            index += 1
+            continue
+        block = [line.rstrip()]
+        index += 1
+        while index < len(lines) and looks_like_table_row(lines[index]):
+            block.append(lines[index].rstrip())
+            index += 1
+        if is_markdown_table(block):
+            table = "\n".join(block).strip()
+            if len(table) > max_chars:
+                table = table[: max_chars - 1].rstrip() + "..."
+            tables.append(table)
+            if len(tables) >= max_tables:
+                break
+    return tables
+
+
+def looks_like_table_row(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2
+
+
+def is_markdown_table(lines: list[str]) -> bool:
+    if len(lines) < 2:
+        return False
+    separator_pattern = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
+    return any(separator_pattern.match(line) for line in lines[1:3])
 
 
 def extract_jina_reader_title(markdown: str) -> str | None:

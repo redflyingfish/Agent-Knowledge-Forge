@@ -135,6 +135,7 @@ def cluster_title(primary_topic: str) -> str:
     return {
         "agent_architecture": "Agent Architecture",
         "agent_hardening": "Agent Hardening",
+        "claude_code": "Claude Code",
         "coding_agents": "Coding Agents",
         "computer_use": "Computer Use",
         "context_engineering": "Context Engineering",
@@ -142,6 +143,7 @@ def cluster_title(primary_topic: str) -> str:
         "data_connectors": "Data Connectors",
         "deployment": "Deployment",
         "guardrails": "Guardrails",
+        "hardness": "Task Hardness",
         "human_in_loop": "Human-In-The-Loop",
         "identity_access": "Identity And Access",
         "knowledge_graphs": "Knowledge Graphs",
@@ -161,8 +163,10 @@ def cluster_title(primary_topic: str) -> str:
         "rag": "RAG",
         "retrieval": "Retrieval",
         "safety": "Safety",
+        "skills": "Agent Skills",
         "structured_outputs": "Structured Outputs",
         "workflow": "Workflow Design",
+        "openclaw": "OpenClaw",
         "evaluation": "Evaluation",
         "frontier_signal": "Frontier Signals",
     }.get(primary_topic, primary_topic.replace("_", " ").title())

@@ -36,6 +36,10 @@ def test_default_query_plan_covers_broader_agent_engineering_topics() -> None:
     assert "identity_access" in topics
     assert "tool_routing" in topics
     assert "cost_latency" in topics
+    assert "hardness" in topics
+    assert "skills" in topics
+    assert "claude_code" in topics
+    assert "openclaw" in topics
 
 
 def test_query_plan_includes_chinese_source_hubs() -> None:
@@ -44,6 +48,28 @@ def test_query_plan_includes_chinese_source_hubs() -> None:
     assert "site:zhihu.com AI Agent 大模型智能体 2026" in rendered
     assert "site:juejin.cn AI Agent 大模型 工程实践 2026" in rendered
     assert "site:mp.weixin.qq.com AI Agent MCP RAG 智能体 2026" in rendered
+
+
+def test_query_plan_expands_hardness_topic() -> None:
+    rendered = render_query_plan(build_query_plan(topics=[KnowledgeTopic.HARDNESS], year=2026))
+
+    assert "agent task hardness official docs 2026" in rendered
+    assert "hard agent benchmarks GitHub 2026" in rendered
+    assert "智能体任务难度 中文博客 2026" in rendered
+
+
+def test_query_plan_expands_skills_and_coding_tool_topics() -> None:
+    rendered = render_query_plan(
+        build_query_plan(
+            topics=[KnowledgeTopic.SKILLS, KnowledgeTopic.CLAUDE_CODE, KnowledgeTopic.OPENCLAW],
+            year=2026,
+        )
+    )
+
+    assert "agent skills official docs 2026" in rendered
+    assert "Claude Code CLI GitHub 2026" in rendered
+    assert "OpenClaw security failure modes 2026" in rendered
+    assert "智能体技能 中文博客 2026" in rendered
 
 
 def test_parse_topic_values_rejects_unknown_topics() -> None:

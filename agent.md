@@ -10,6 +10,7 @@ This project should be developed in a teaching-assistant style. The coding agent
 - Prefer small, verifiable improvements that align with the existing architecture before introducing larger abstractions.
 - While editing, call out important trade-offs such as correctness, maintainability, testability, performance, and future extensibility.
 - After implementation, summarize what changed, how it was verified, and any remaining limitations or next-step suggestions.
+- For any substantial optimization, code change, pipeline run, or quality investigation, update the local `ITERATION_LOG.md` before the final response. Treat the log as the user's private review notebook: concise Chinese is preferred, and the file must stay out of public commits.
 - Keep conversational explanations in Chinese unless the user asks otherwise.
 - Write basic in-code comments, docstrings, and developer-facing code notes in English for consistency with the codebase.
 
@@ -38,7 +39,7 @@ This project should be developed in a teaching-assistant style. The coding agent
 - When the user knows an Agent knowledge cutoff date, use memory-pack time filtering to exclude already-known entries.
 - For expanded discovery, use a 2025+ broad frontier policy. Include recent papers, repositories, docs, and technical blogs when they teach reusable agent engineering; unknown-date non-authority sources need review.
 - For broad runs, prefer automatic search discovery (`akf discover` or `akf run-team --discover`) over manually prepared seed URL files. Treat URL files as optional local supplements or debugging fixtures, not as the default product path.
-- Keep topic coverage broad enough for current agent engineering: memory/RAG, knowledge graphs, MCP/protocols, tool use/routing, structured outputs, reasoning/planning, stateful runtime, multi-agent handoffs, human review, guardrails, identity/access, observability/evaluation, deployment, cost/latency, coding agents, computer use, multimodal agents, and context engineering.
+- Keep topic coverage broad enough for current agent engineering: memory/RAG, knowledge graphs, MCP/protocols, tool use/routing, structured outputs, reasoning/planning, task hardness, stateful runtime, multi-agent handoffs, human review, guardrails, identity/access, observability/evaluation, deployment, cost/latency, coding agents, computer use, multimodal agents, and context engineering.
 - Prefer the multi-agent architecture for large-scale runs: discovery/filtering, deep reading, memory synthesis, human learning report writing, and quality evaluation should be separate roles with separate system prompts and handoff artifacts.
 - Treat strong research systems as design evidence when they fit the project: staged survey generation, schema-validated extraction, topic clustering, frozen evaluation sets, and explicit next-run feedback loops are preferred over ad hoc one-shot summaries.
 - For end-to-end harvesting, prefer `akf run-team` over manually chaining commands unless debugging or recovering one stage. The public UX should be one unified command; users should not need to start each specialist agent separately.
@@ -63,7 +64,8 @@ This project should be developed in a teaching-assistant style. The coding agent
 - Prefer iterative measurable upgrades: ingest, analyze, inspect, patch, test, and repeat.
 - When tuning filters, compare `knowledge_index.md` before and after the change; prioritize fewer high-signal cards over more low-signal cards.
 - When LLM screening is available, compare deterministic and LLM-assisted outputs; preserve disagreements as evidence for improving cheaper rules.
-- Record meaningful project upgrades in a local `ITERATION_LOG.md` if present, including the goal, method, validation, and lesson. Keep that journal out of the public repository.
+- Record every meaningful project upgrade in the local `ITERATION_LOG.md` when the file exists, including: date, user goal, implementation method, files or commands changed, validation result, observed metric/result change, and lesson for the next iteration. If the turn only answers a question or makes a trivial non-behavioral edit, explicitly decide whether a log entry is unnecessary.
+- Before sending a final response after substantial work, quickly check whether `ITERATION_LOG.md` should be updated. Do not let code, README, report, MCP, search, screening, memory, or evaluation improvements finish without a corresponding iteration note.
 - Keep `AGENT_MEMORY.md` focused on current operational memory for future agents, not long-form user-facing summaries.
 
 ## Verification Checklist

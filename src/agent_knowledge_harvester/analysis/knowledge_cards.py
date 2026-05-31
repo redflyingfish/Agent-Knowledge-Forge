@@ -45,6 +45,15 @@ TOPIC_KEYWORDS: dict[KnowledgeTopic, tuple[str, ...]] = {
         "pull request",
         "codebase",
     ),
+    KnowledgeTopic.CLAUDE_CODE: (
+        "claude code",
+        "claude-code",
+        "claude code cli",
+        "claude.md",
+        ".claude",
+        "claude command",
+        "claude subagent",
+    ),
     KnowledgeTopic.COMPUTER_USE: (
         "computer use",
         "browser",
@@ -99,6 +108,19 @@ TOPIC_KEYWORDS: dict[KnowledgeTopic, tuple[str, ...]] = {
         "approval",
         "allowlist",
         "denylist",
+    ),
+    KnowledgeTopic.HARDNESS: (
+        "hardness",
+        "difficulty",
+        "hard task",
+        "challenging task",
+        "complex task",
+        "failure mode",
+        "benchmark difficulty",
+        "reasoning depth",
+        "tool chain length",
+        "long horizon",
+        "edge case",
     ),
     KnowledgeTopic.HUMAN_IN_LOOP: (
         "human in the loop",
@@ -276,6 +298,18 @@ TOPIC_KEYWORDS: dict[KnowledgeTopic, tuple[str, ...]] = {
         "data privacy",
         "tool safety",
     ),
+    KnowledgeTopic.SKILLS: (
+        "agent skill",
+        "agent skills",
+        "claude skill",
+        "claude skills",
+        "codex skill",
+        "codex skills",
+        "skill.md",
+        "skill file",
+        "skill manifest",
+        "slash command",
+    ),
     KnowledgeTopic.STRUCTURED_OUTPUTS: (
         "structured output",
         "json schema",
@@ -283,6 +317,13 @@ TOPIC_KEYWORDS: dict[KnowledgeTopic, tuple[str, ...]] = {
         "function schema",
         "tool schema",
         "typed output",
+    ),
+    KnowledgeTopic.OPENCLAW: (
+        "openclaw",
+        "open claw",
+        "claw cli",
+        "claw coding agent",
+        "claw tool",
     ),
     KnowledgeTopic.FRONTIER_SIGNAL: (
         "open-source standard",
@@ -396,6 +437,8 @@ class KnowledgeCardAnalyzer:
             source_url=document.source_url,
             title=document.title,
             cards=cards,
+            image_urls=document_asset_list(document, "image_urls", limit=6),
+            table_snippets=document_asset_list(document, "table_snippets", limit=4),
             skipped_reason=skipped_reason,
         )
 
@@ -423,6 +466,8 @@ class KnowledgeCardAnalyzer:
             topics=topics,
             implementation_notes=implementation_notes,
             evidence=evidence,
+            image_urls=document_asset_list(document, "image_urls", limit=3),
+            table_snippets=document_asset_list(document, "table_snippets", limit=2),
             relevance_score=relevance_score,
             frontier_score=frontier_score,
         )
@@ -508,6 +553,10 @@ def build_knowledge_index(
                     frontier_score=card.frontier_score,
                     priority_score=score_priority(card),
                     evidence=card.evidence[:2],
+                    image_urls=unique_strings([*card.image_urls, *result.image_urls])[:3],
+                    table_snippets=unique_strings(
+                        [*card.table_snippets, *result.table_snippets]
+                    )[:2],
                 )
             )
 
@@ -532,6 +581,25 @@ def score_priority(card: KnowledgeCard) -> float:
         + evidence_bonus
     )
     return round(min(1.0, score), 3)
+
+
+def document_asset_list(document: CleanDocument, key: str, limit: int) -> list[str]:
+    value = document.metadata.get(key)
+    if not isinstance(value, list):
+        return []
+    return unique_strings(str(item).strip() for item in value if str(item).strip())[:limit]
+
+
+def unique_strings(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        normalized = value.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        output.append(normalized)
+    return output
 
 
 def build_frontier_brief(index: KnowledgeIndex, max_items: int = 5) -> FrontierBrief:

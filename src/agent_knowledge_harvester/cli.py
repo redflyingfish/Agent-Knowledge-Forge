@@ -344,6 +344,106 @@ def analyze(
 
 
 @app.command()
+def topic_discovery(
+    in_dir: Annotated[
+        Path,
+        typer.Option("--in-dir", help="Directory containing ingestion JSON files."),
+    ] = settings.ingested_dir,
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Output directory for topic discovery metrics."),
+    ] = Path("data/topic-discovery"),
+    search_report: Annotated[
+        Path | None,
+        typer.Option(
+            "--search-report",
+            help="Optional search_results.json used to label frontier/stop-signal source buckets.",
+        ),
+    ] = None,
+    use_llm_topic_mining: Annotated[
+        bool,
+        typer.Option("--use-llm-topic-mining/--no-use-llm-topic-mining"),
+    ] = False,
+    max_docs: Annotated[
+        int | None,
+        typer.Option("--max-docs", min=1, help="Limit documents for a bounded topic-mining test."),
+    ] = None,
+    max_topics_per_doc: Annotated[
+        int,
+        typer.Option("--max-topics-per-doc", min=1, max=20),
+    ] = 8,
+    min_sources: Annotated[
+        int,
+        typer.Option(
+            "--min-sources",
+            min=1,
+            help="Minimum distinct sources before a new topic is promoted.",
+        ),
+    ] = 2,
+    min_confidence: Annotated[
+        float,
+        typer.Option("--min-confidence", min=0.0, max=1.0),
+    ] = 0.55,
+    known_similarity_threshold: Annotated[
+        float,
+        typer.Option(
+            "--known-similarity-threshold",
+            min=0.0,
+            max=1.0,
+            help="Similarity above this means a candidate is treated as already covered.",
+        ),
+    ] = 0.78,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", min=1, max=8),
+    ] = 2,
+) -> None:
+    """Mine candidate emerging topics and write coverage/yield metrics."""
+    configure_logging(settings.logs_dir)
+    import asyncio
+
+    from agent_knowledge_harvester.analysis.topic_discovery import (
+        discover_topics_from_ingestion_dir,
+        write_topic_discovery_report,
+    )
+
+    llm_client = None
+    if use_llm_topic_mining:
+        from agent_knowledge_harvester.llm.client import OpenAICompatibleLLMClient
+
+        llm_client = OpenAICompatibleLLMClient(settings)
+        status = llm_client.config_status("extraction")
+        if not status.configured:
+            raise typer.BadParameter(
+                "LLM topic mining is not configured; missing=" + ",".join(status.missing)
+            )
+
+    report = asyncio.run(
+        discover_topics_from_ingestion_dir(
+            in_dir,
+            llm_client=llm_client,
+            use_llm=use_llm_topic_mining,
+            search_report_path=search_report,
+            max_docs=max_docs,
+            max_topics_per_doc=max_topics_per_doc,
+            min_sources=min_sources,
+            min_confidence=min_confidence,
+            known_similarity_threshold=known_similarity_threshold,
+            concurrency=concurrency,
+        )
+    )
+    write_topic_discovery_report(report, out)
+    typer.echo(
+        "Mined "
+        f"{report.metrics.observed_topic_count} topic candidate(s); "
+        f"promoted {report.metrics.promoted_topic_count}; "
+        f"known-topic coverage={report.metrics.known_topic_coverage:.1%}; "
+        f"low_yield={report.metrics.low_yield}. "
+        f"Report written to {out / 'topic_discovery_report.md'}"
+    )
+
+
+@app.command()
 def evaluate(
     screening_report: Annotated[
         Path | None,
@@ -1020,6 +1120,8 @@ def write_index_based_human_reports(
 
     from agent_knowledge_harvester.llm.client import OpenAICompatibleLLMClient
     from agent_knowledge_harvester.memory.llm_report import (
+        build_human_report_plan_with_llm,
+        build_source_dossiers_from_ingestion_dir,
         render_human_learning_report_from_index_with_llm,
     )
     from agent_knowledge_harvester.schemas.analysis import KnowledgeIndex
@@ -1033,21 +1135,37 @@ def write_index_based_human_reports(
     report_dir.mkdir(parents=True, exist_ok=True)
     index = KnowledgeIndex.model_validate_json(index_path.read_text(encoding="utf-8"))
     llm_client = OpenAICompatibleLLMClient(runtime_settings)
+    source_dossiers = build_source_dossiers_from_ingestion_dir(
+        index,
+        run_dir / "02_ingested",
+    )
 
     async def write_index_reports() -> None:
         languages = ["en", "zh"] if report_language == "both" else [report_language]
         for language in languages:
+            report_plan = await build_human_report_plan_with_llm(
+                index,
+                llm_client=llm_client,
+                language=language,
+                source_dossiers=source_dossiers,
+            )
+            suffix = "zh" if language == "zh" else "en"
+            (report_dir / f"frontier_learning_report.{suffix}.plan.md").write_text(
+                report_plan.rstrip() + "\n",
+                encoding="utf-8",
+            )
             markdown = await render_human_learning_report_from_index_with_llm(
                 index,
                 llm_client=llm_client,
                 language=language,
+                source_dossiers=source_dossiers,
+                report_plan=report_plan,
             )
-            suffix = "zh" if language == "zh" else "en"
             (report_dir / f"frontier_learning_report.{suffix}.md").write_text(
                 markdown,
                 encoding="utf-8",
             )
-            if language == "en":
+            if language == languages[0]:
                 (report_dir / "frontier_learning_report.md").write_text(
                     markdown,
                     encoding="utf-8",
